@@ -8,29 +8,33 @@ Coordinator: [Public app microphone test](t3-thread://v1/mcp:1e1bffb3-737b-4d88-
 
 ## Current state
 
-The first actual human Start attempt failed with HTTP 429 before session creation. Two later Journal entries now have verified persisted readback, but neither has a voice-conversation/session ID and their speech/model provenance remains unconfirmed. The coordinator performed no Start click, provider probe, Journal write, context edit, deployment or hardware action. Current active-session state is unknown. New Starts and seed clearance remain held pending the user's state answer and the newly authorized ten fictional-entry baseline. The earlier Anna/two-page script is superseded as test input.
+The first actual human Start attempt failed with HTTP 429 before session creation. Ten fictional history entries are now saved, with three later unattributed records observed in the latest readback. No genuine polished voice-agent loop is established. The coordinator performed no Start click, provider probe, Journal write, context edit, deployment or hardware action. Current active-session state is unknown. Agent-only frontend is public, but the no-raw backend prompt is not yet deployed. No new human Start is requested; an existing conversation may continue. The earlier Anna/two-page script is superseded as test input.
 
 The frontend owner reports the corrected publication ready for initial human testing. This is readiness evidence, not spoken end-to-end proof.
 
 | Part | Pin or evidence |
 | --- | --- |
 | Public app | https://pink-hack-journal.lovable.app/app |
-| Current app name | Kindalong, previous pink/rose palette restored, owner-reported |
-| Current publication source | `a3fc982cbf666e963c5eeef7eb10428dc984940b`, Kindalong rebrand, owner-reported |
-| Latest deployment attempt | `d1bca071-eb8e-4d23-baa1-604c5f656619`, owner reports completed but served unchanged public source/asset; no corrective UI publication |
+| Current app name | Held, owner-reported current public branding |
+| Current publication source | `0924f3e58167aeb29203fe4f4bc2d2020f76ce44`, floating voice bar, owner-reported |
+| Current Lovable deployment | `d51a6f93-0260-44fb-9e4a-88c38aed4554` |
+| Agent-only correction source/deployment | `536a78d95b2486eaa76fa67874a59c53d7f842e3` / `f968f7f7-6ba5-4f04-863a-58f55730247a` |
+| Prior unchanged deployment attempt | `d1bca071-eb8e-4d23-baa1-604c5f656619`, served unchanged earlier source/asset |
 | Kindalong release deployment | `bc2ab442-b0d5-4acc-a4c9-1cc6ad8b3b62` |
-| Current publication operation | `umsg_01m5q1gwnsepdrba7ndfcr7ryk`, completed, owner-reported |
-| App/voice behavior baseline | `65f746ff2fa69255e0660d6c01da70ce975e4f66` |
+| Agent-only correction operation | `umsg_01m5q59p43fdztqfeqw1vpgqjg`, queued handoff then corrected publication, owner-reported |
+| Current app behavior | `536a78d95b2486eaa76fa67874a59c53d7f842e3`, removes raw-transcript save fallback |
+| Prior Stop-aware app/client baseline | `65f746ff2fa69255e0660d6c01da70ce975e4f66` |
 | Prior app/client deployment | `98d4193d-486f-4d7c-966e-9818336dbe04` |
 | App/client correction operation | `umsg_01m5py4fdse1hbg0dkdjk0t40k`, completed, owner-reported |
 | Prior publication asset evidence | `app-DbtVxipI.js` at `65f746ff`, owner-reported Stop endpoint, `backendStopped`, Retry Stop and independent feedback |
-| Current backend source | `1396ab5835dadf5f90848b2c6e5467af1ab9d9ae`, Main reports isolated Git content matches exact two-route-file deployed candidate, excluding dirty prompt edits |
+| Current backend source | `e8c22dfc942e80e3ef0ab1241cf0ca0caeaba9b3`, backend owner verified production Git metadata; no-raw prompt is not deployed |
 | Deployed candidate base | `f932d52b23f774ead4cb9c6488e7064031c5e7fe` plus only quota removal in `routes/voice.ts` and regression in `routes/voice.test.ts` |
-| Current backend deployment | `dpl_3RPxVYsSXfwcTEUrc3DBVH4QGpvr`, READY, owner-reported |
+| Current backend deployment | `dpl_BwahCqZmXetNR5d4YgVtyMat6xuJ`, READY, backend-owner metadata verified |
+| Accepted quota-removal source/deployment | `1396ab5835dadf5f90848b2c6e5467af1ab9d9ae` / `dpl_3RPxVYsSXfwcTEUrc3DBVH4QGpvr` |
 | Prior backend source/deployment | `1bf7d24ceebd8ae706aacfee74624ffe3a7c77fc` / `dpl_D4keCEU8SgHaPMTyzLEMuQdNKQ6u` |
 | Configured API | https://pink-hack.vercel.app |
-| Immutable backend | https://pink-hack-f67g98dak-quasr.vercel.app |
-| Context manifest | Verified current tracking/helps/recovery revisions 4/3/1 in [demo-seed.md](demo-seed.md), additive tracking conventions only; Journal empty |
+| Immutable backend | https://pink-hack-gshrbahb6-quasr.vercel.app |
+| Context/Journal baseline | Context 4/3/1; ten October 14–23 seeds revision 2 plus three later unattributed records, total 13 at 14:48:50 UTC |
 
 Frontend owner reports `VOICE_ENABLED=true`, anonymous public HTTP 200, 38 focused mocked tests and harness compilation, plus a temporary page save/reload/archive. None involved Start or a provider session. Backend owner reports 64 regressions, types/build and deployed CORS/replay/Stop checks; bounded source review is closed. These checks do not establish human speech or voice writing.
 
@@ -150,3 +154,39 @@ The user answered the creation question with `An agent did yes`. This is recorde
 Latest user requirements reject raw-transcript Journal saves as the product result. A passing flow must have the application agent use persona/context/tracking pages, create a polished native entry with explicit properties and a Day plan, then support readback and Stop. The sole frontend writer owns removal of the `storeRecording` direct-save bypass. Backend owner owns the separately authorized cleanup of only the two exact unchanged raw test entries and the contract handoff. This supersedes the prior preservation restriction for those two records only; preserve any genuine active-conversation output and retain their captured evidence. No cleanup is performed by this coordinator.
 
 The user reaffirmed `We need to demo populate our database`. The existing seed writer owns exactly ten labelled fictional presentation entries aligned with Emma's current pages, polished bodies/properties/Day plans, not voice proof. It is preparing payloads while current mic/voice state remains unknown. The coordinator asked whether a session is running now and requested backend-owned read-only active-conversation metadata. Neither silence nor the user attribution establishes inactivity. New Starts are held, and no Journal POST clearance is granted yet. Do not stop a genuine session to seed or test the rejected transcript bypass again.
+
+## Direct database replacement authorization
+
+The latest explicit user instruction authorizes direct removal of existing demo Journal records and population of exactly ten prepared October 14–23 clearly labelled fictional daily artifacts. Main assigns the backend owner as sole live database writer, replacing only demo-user Journal and preserving context, profile, conversations, runtime and other owners. This supersedes the earlier seed-clearance hold for the replacement itself. The seed worker now owns prepared payload/manifest handoff only and performs no duplicate POST or database mutation.
+
+The coordinator notified both existing owners of that ownership transfer and requested the exact post-replacement baseline/count/IDs/dates/provenance evidence. An existing genuine conversation may continue; no Stop, restart or additional Start is required to populate the demo. Active-session state remains unknown, not inferred inactive. Capture any actual conversation result separately from the authorized baseline replacement. The ten entries must never count as real agent or voice proof. Prior readbacks of the two raw-test entries remain historical evidence even after authorized removal. Replacement completion is pending the backend owner's concrete handoff.
+
+## Agent-only frontend publication
+
+The sole frontend owner supplied concrete public source `536a78d95b2486eaa76fa67874a59c53d7f842e3`, deployment `f968f7f7-6ba5-4f04-863a-58f55730247a`. The associated diff changes PinkApp, focused UI tests and a verification note. It removes `storeRecording`, raw transcript refs and save-on-Stop/closed/error, with no direct raw Journal POST fallback or capture-derived `original_text`. Actual WebRTC `createVoiceConnection`, owned session ID and actual delegation ID remain the capture/agent path. No SpeechRecognition or providerless adapter is used.
+
+The existing agent callback maps messages, forwards abort, checks returned entry IDs/revisions, protects dirty drafts and refreshes records before returning response text. Read-only, aborted or unverified turns create no fallback entry. Owner reports 46 focused tests and compilation, plus public HTTP 200 and inspection of `app-R0MMlVUx.js` showing no `journal:voice-` fallback marker and the retained agent/delegation contract. No real service/provider/record mutation occurred during these checks. Held branding remains public.
+
+This is frontend readiness, not spoken end-to-end proof. Backend prompt no-raw `original_text` default readiness and one real artifact-writing loop remain unverified here. Backend owner was asked for its concrete deployed prompt pin and ten-entry replacement baseline. The separate floating-voice-bar/no-ping request is sequential UI-only work, with no client/transport/data changes. No new human Start has been requested by the coordinator.
+
+## Completed fictional history baseline
+
+The canonical [seed manifest](demo-seed.md), reported SHA-256 `37d06c4ac00814a0e535406da8cd99a1f723a4766c5aca915bc89fd559023611`, documents backend-owned atomic replacement and cosmetic updates. Ten labelled October 14–23 fictional artifacts are saved at revision 2, source `app`, empty `original_text`, null voice/session links, final native bodies and accepted ratings/properties. Internal seed property keys are omitted and reported medicine uses a single medication string. Do not restore historical internal metadata. This is manual synthetic AI-composed artifact/persistence evidence only.
+
+The original transaction at 14:35:45–56 UTC removed three existing demo-user records, `d674033d-c2ce-4ada-9c00-300550e747bc`, `6de24801-f382-484b-8cf9-a30afb2f9b30` and `49401299-5cb1-471b-8f85-22522cef8261`, then inserted ten revision-1 seeds. The backend preserved seven other-owner Journal rows and unrelated tables inside the transaction. Later cosmetic receipts/readback verify revision 2 for all ten. Outer device lease/conversation snapshots vary; do not claim those outer snapshots are byte-identical or attribute their changes.
+
+Coordinator public GET `/journal?limit=100` at `2026-10-24T14:48:50.952846Z` returned HTTP 200, thirteen entries and null cursor. All ten canonical seed IDs match the final manifest at revision 2. Three later October 24 records remain preserved and unattributed: `a13574b3-33f6-4618-a4ae-5e91fd107dc6`, `e681c604-af75-425f-857c-c1caf57c3037` and `7f9ea00b-7271-42d2-99ef-41a27595788d`. Their voice-conversation/session IDs are null. The seed worker's eleven-row snapshot at 14:40:25 UTC is historical; two later records have since appeared. No extra cleanup is authorized or performed by this coordinator. GET context at `14:48:51.512397Z` confirms pages 4/3/1 and profile revision 0.
+
+The ten full native payloads, IDs, creation/cosmetic operation mappings and readback evidence live in the canonical seed manifest and `backend/.deploy/demo-journal-final-rev2/{http-readback,metadata,cas-receipts-db-readback}.json`. Final semantic payload fingerprints and receipts match current DB/HTTP as owner-verified; original raw HTTP request bytes were not retained. These seeded operations must never be replayed as a live voice callback or counted as voice proof.
+
+## Production prompt readiness gap
+
+Backend owner verified authenticated read-only Vercel metadata for current production `dpl_BwahCqZmXetNR5d4YgVtyMat6xuJ`, Git SHA `e8c22dfc942e80e3ef0ab1241cf0ca0caeaba9b3`. Exact-source `prompts.ts` hash `253c9b730d0aa10483abea45f8fd87403cb24f48a237b709140465e6d3c68c8f` still requires an `original_text` transcript. Therefore the no-raw prompt correction is not deployed. Quota route content matches the accepted removal; historical CREATE date support is absent in this deployed pin.
+
+A clean offline candidate based on `d30de37` plus only the three accepted prompt files has 74 passing tests, types and build as owner-reported. Main owns isolated Git pinning of those files. The coordinator reports actual current human-session state unknown and does not infer deployment/device clearance, stop a session, restart anything or run a provider probe. Next genuine polished-artifact test awaits concrete deployed prompt readiness and actual human coordination.
+
+## Floating voice bar publication
+
+The sole frontend owner published `0924f3e58167aeb29203fe4f4bc2d2020f76ce44`, deployment `d51a6f93-0260-44fb-9e4a-88c38aed4554`. The inspected edit changes presentation, scoped CSS, focused tests and notes, with no transport, agent/API/config/data changes. The fixed rose bar has a steady Listening indicator and no ping/pulse. Current visible controls are Start recording, Stop recording and Retry Stop, retaining existing handlers and durable retirement gating.
+
+Owner reports 20 focused UI tests, compilation and read-only desktop/phone/editor/drawer/long-content checks. Public `/app` returned 200; served `app-D4Tb2l7o.js` retained the agent endpoint and lacked `animate-ping` and `journal:voice-` raw-fallback markers. Held branding and agent-only entry-ID readback remain intact. Actual screenshots are in `presentation/assets/kindalong-0924f3e5-floating-voice-{desktop,phone}-{journal,editor}.png`. They show real current data, including manually seeded history, not a microphone session. Physical-phone keyboard/safe-area and real mic/provider remain unverified by this UI task. No new Start, recording, provider or record mutation occurred in this publication check.

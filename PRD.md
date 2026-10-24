@@ -93,6 +93,8 @@ The original [independent voice audit](docs/demo-validation.md#voice-blockers-re
 
 The [breast cancer demo story](docs/demo-script.md) uses the current Notion composite Emma to join physical symptoms, emotions, a reported prescription and everyday plans in one record between oncology appointments. It is a synthetic scenario, not a patient account or evidence of clinical outcomes. Presentation follows the validated candidate; broader user-chosen journaling remains supported.
 
+Current prompt readiness, reported by Main on 24 October: the three accepted prompt files are pinned offline at `7ec98e74c8d65ca0ac8d44b978215892a7de0784`, based on `d30de37`. This candidate has not been pushed or deployed and has not changed the shared index or active runtime. Production remains at `e8c22d` with the older raw-text prompt. The public frontend's raw-transcript fallback removal is separate; a genuine final-artifact save remains unverified. Deployment awaits actual browser/device session clearance. The ten fictional manual history records do not close that voice gate.
+
 ## Acceptance
 
 Verify adding unfamiliar context pages, saving/reloading native blocks, and a page-informed voice conversation that directly creates a final Journal artifact with explicit requested properties and a manageable Day plan. Verify the recording control cannot create a raw-transcript entry, that raw speech is not persisted in `original_text` by default, and that the saved claim follows the actual artifact write. Verify a direct Day-plan update preserves the rest of the page. Normal user-authored editor entries and the ten authorized fictional manual examples remain supported.

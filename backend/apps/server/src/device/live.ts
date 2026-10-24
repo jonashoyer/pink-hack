@@ -46,6 +46,7 @@ export class DeviceLiveSession {
         if (this.closing) return;
         if (event.type === "error") { this.failed(); return; }
         if (event.type === "session.started") {
+          console.log(JSON.stringify({ debug: "live_session_started", audio: (event.session as { audio?: unknown } | undefined)?.audio ?? null })); // TEMP DEBUG
           const session = event.session as { model?: unknown; audio?: { format?: { type?: unknown; rate?: unknown } } } | undefined;
           if (!session || (session.model !== undefined && session.model !== provider.model)
             || (session.audio?.format && (session.audio.format.type !== "audio/pcm" || session.audio.format.rate !== PCM_RATE))) { this.failed(); return; }

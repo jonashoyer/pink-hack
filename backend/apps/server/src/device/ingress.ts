@@ -83,6 +83,7 @@ export class DeviceAudioConnection {
     if (binary) {
       if (!this.live || !this.conversation || this.state === "connecting" || this.state === "stopped") { this.error("device_not_listening"); return; }
       if (!bytes.length || bytes.length % 2 || bytes.length > MAX_PCM_CHUNK_BYTES) { this.fatal("invalid_pcm_chunk"); return; }
+      debugAudio("in", bytes);
       try { this.input.enqueue(bytes); this.publish("listening"); } catch { this.fatal("audio_backpressure"); }
       return;
     }
@@ -161,10 +162,12 @@ export class DeviceAudioConnection {
     try {
       if (event.type === "session.output_audio.delta") {
         if (typeof event.delta !== "string" || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(event.delta)) throw new Error("Invalid output PCM.");
-        this.output.enqueue(Buffer.from(event.delta, "base64")); this.publish("speaking");
+        const pcm = Buffer.from(event.delta, "base64"); debugAudio("out", pcm);
+        this.output.enqueue(pcm); this.publish("speaking");
       } else if (event.type === "session.input_transcript.delta" || event.type === "session.output_transcript.delta") {
         if (typeof event.delta !== "string" || typeof event.start_ms !== "number" || typeof event.end_ms !== "number"
           || !Number.isFinite(event.start_ms) || !Number.isFinite(event.end_ms) || event.start_ms < 0 || event.end_ms < event.start_ms) throw new Error("Invalid transcript.");
+        console.log(JSON.stringify({ debug: "transcript", role: event.type === "session.input_transcript.delta" ? "user" : "assistant", text: event.delta }));
         this.transcriptBytes += Buffer.byteLength(event.delta);
         if (this.transcriptBytes > 65536 || this.transcripts.length >= 2048) throw new Error("Transcript limit exceeded.");
         this.transcripts.push({ role: event.type === "session.input_transcript.delta" ? "user" : "assistant", text: event.delta, startMs: event.start_ms, endMs: event.end_ms });
@@ -276,4 +279,15 @@ export function attachDeviceAudio(server: NodeHTTPServer, db: Database, config: 
     detached = true; server.off("upgrade", upgrade); unregister();
     active?.revoke(); await active?.disconnect(); wss.close();
   };
+}
+
+// TEMP DEBUG: once-per-second PCM peak per direction for the audio level investigation.
+const debugLevels = { in: { peak: 0, bytes: 0, at: 0 }, out: { peak: 0, bytes: 0, at: 0 } };
+function debugAudio(direction: "in" | "out", pcm: Buffer) {
+  const level = debugLevels[direction];
+  for (let i = 0; i + 1 < pcm.length; i += 2) level.peak = Math.max(level.peak, Math.abs(pcm.readInt16LE(i)));
+  level.bytes += pcm.length;
+  if (Date.now() - level.at < 1000) return;
+  console.log(JSON.stringify({ debug: "pcm_level", direction, peak: level.peak, bytes: level.bytes, head: pcm.subarray(0, 16).toString("hex") }));
+  level.peak = 0; level.bytes = 0; level.at = Date.now();
 }
