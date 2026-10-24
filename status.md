@@ -9,12 +9,12 @@ Public landing verified · Check-in 15:00 · Demo 16:30 · Europe/Copenhagen · 
 
 | Track | Status | Next | Owner |
 | --- | --- | --- | --- |
-| App | Landing ready; UI save/reload passed; public CORS blocked | Fix public CORS; copy stop-aware client; verify voice | Lovable writer + backend owner |
-| API | No-auth storage verified; voice replay/Stop fixes running | Fix, redeploy, verify voice correctness | Backend owner |
-| Atech | Firmware uploaded; board not answering commands | Check light-grid pattern; resolve startup, then WiFi/voice test | Atech owner + user observation |
-| Demo | Public landing ready; voice demo/deck unvalidated | Submission UNKNOWN; validate candidate, then deck/rehearsal | Coordinator + Demo/Opus |
+| App | Public CORS verified; voice gated | Copy final stop-aware client; coordinated voice loop | Lovable writer |
+| API | Deployed: replay/Stop/public CORS verified; 64 tests | Verify spoken browser loop | Backend owner |
+| Atech | Startup crash; stack fix built; USB disconnected | Reconnect/reflash, then verify WiFi/voice | Atech owner + user reconnect |
+| Demo | Two synthetic pages seeded; landing live; voice demo pending | Final voice integration; coordinated save/reload; submission UNKNOWN | Coordinator + frontend/demo workers |
 
 [Public landing](https://pink-hack-journal.lovable.app/) · [App](https://pink-hack-journal.lovable.app/app) · [Lovable editor](https://lovable.dev/projects/ee916e8c-7f2f-4989-9c6e-cedcff1793b5) · [API](https://pink-hack.vercel.app)
-[API evidence](docs/backend.md) · [Atech](hardware/atech-voice/README.md) · [Demo evidence](docs/demo-validation.md) · [Pitch](docs/demo-script.md) · [Check-in](docs/check-in.md) · [History](docs/status-history-2026-10-24.md)
+[API evidence](docs/backend.md) · [Atech](hardware/atech-voice/README.md) · [Demo evidence](docs/demo-validation.md) · [Pitch](docs/demo-script.md) · [Check-in](docs/check-in.md) · [History](docs/status-history-2026-10-24.md) · [Seed manifest](docs/demo-seed.md)
 
 Update your row. Keep detailed evidence in the linked docs.

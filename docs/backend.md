@@ -74,6 +74,11 @@ Live has no documented PTT commit/output-cancel event. Turn end appends one seco
 
 ## Verification and operation
 
+Final voice-fix source `1bf7d24ceebd8ae706aacfee74624ffe3a7c77fc` was pushed and deployed READY as `dpl_D4keCEU8SgHaPMTyzLEMuQdNKQ6u`, immutable URL `https://pink-hack-e6yzy81tk-quasr.vercel.app`, fixed alias `https://pink-hack.vercel.app`. Final public-origin GET 200/OPTIONS 204 passed with exact CORS and no cookies. A read-only synthetic callback exercised no-write transient failure recovery in real Turso, followed by deployed exact replay, changed-request 409, idempotent Stop 200, persisted stopped state and late-agent 409. No Journal writes, context edits, provider requests or device provisioning occurred. Only its exact synthetic conversation/receipt metadata was cleaned up.
+
+Canonical retained demo context is owned by the population worker and recorded in [demo-seed.md](demo-seed.md). Backend testing will not delete/reseed those pages or seed Journal. The sole frontend writer owns the one corrected genuine spoken browser loop after copying the frozen Stop-aware client. This is pending, separate from the successful storage and synthetic correctness gates.
+
+
 Voice correctness gate: 64 tests pass, including exact retry after a transient no-write failure, two creations plus an update recovered after provider failure or a crash, fresh-process replay with both IDs/current revisions, zero-write lease replacement and stale-worker rejection. The original duplicate-write and Stop404 defects are corrected. Additive migration `20261024120532_wide_annihilus` preserved existing rows and passed FK checks.
 
 On deployment `dpl_4EFE2xysikmpod4F49yntweywrPs`, public-origin context/pages/Journal GET returned 200 with exact `https://pink-hack-journal.lovable.app` CORS; OPTIONS returned 204 without credential support. Deployed cached callback replay, changed-body conflict, idempotent Stop/persisted stopped state, late agent rejection, late cached-tool rejection and committed-entry preservation passed using a synthetic local model, real Turso and deployed HTTP. This used zero live provider requests and all exact synthetic records were removed. The subsequent retryable-failure correction keeps these DTOs and the same migration; its final deployment is recorded below after readiness checks.
