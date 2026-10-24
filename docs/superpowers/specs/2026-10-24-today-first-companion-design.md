@@ -10,6 +10,6 @@ The app now has user-created BlockNote context pages and one Journal with flexib
 
 Keep comfortable writing, accessible controls, truthful save/error feedback, ownership checks, revision protection, and retry-safe writes. Normal unsaved editor text can remain locally. Preserve legacy records for compatibility rather than deleting data.
 
-Hosting is the existing Vercel project and existing Turso database. Azure GPT-Live remains the voice provider. Current device WSS capability and the direct voice integration require actual evidence.
+Hosting is the existing Vercel project and existing Turso database. Azure GPT-Live remains the voice provider. The backend owner verified authenticated WSS, synthetic PCM, direct agent saving, and owned Turso reread. Actual Arduino capture/playback, Lovable browser voice, and 300-second runtime reconnect remain checks for their owners.
 
 [The earlier mockup](2026-10-24-today-first-companion-preview.html) is historical illustration only. Its fixed screens, metric scales, separate plans, and staged workflow are not implementation requirements or a demo candidate.

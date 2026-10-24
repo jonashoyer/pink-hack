@@ -1,16 +1,37 @@
-# pink-hack-pcm-test
+---
+provenance: "Unvetted Synthetic"
+---
 
-Atech project targeting the **14port** board.
+# Local PCM hardware test
 
-Edit `project.yaml` to place modules, then:
+Atech SDK `1.0.0a11`, board `14port`. Confirmed connections:
+microphone **1-2**, speaker **13-14**, button **3**, light grid **4**.
 
-```bash
-atech describe .   # what is placed, each module's API, events and actions
-atech validate .
-atech build .
-atech upload .
-atech monitor      # events from the board
+From the repository root:
+
+```sh
+atech validate hardware/atech
+atech build hardware/atech
+atech upload hardware/atech --port /dev/cu.usbmodem1101
+atech check --port /dev/cu.usbmodem1101
+atech monitor --port /dev/cu.usbmodem1101 --json
 ```
 
-Working with a coding agent? `AGENTS.md` / `CLAUDE.md` in this folder tell it how
-to use the SDK (same text as `atech guide`).
+The first build downloads the ESP32 compiler, about 2.4 GB once.
+Stop the monitor before another SDK command uses USB.
+
+Hold the button and say "Pink Hack audio test, one two three." Release to hear
+the same recording. Capture stops at two seconds. Press during playback to interrupt.
+Repeat several times. Blue is idle, green recording, amber playback, red error.
+
+The monitor reports `pcm_capture` sample count, elapsed time, RMS, peak and clipping.
+`pcm_state` reports state and free heap. A playback-completed event is not proof
+of audibility: the person must hear clear speech and verify interruption.
+No network, transcription, cloud credentials or stored audio is used.
+
+Drivers are copied from the installed MIT Atech SDK. [Local changes](modules/README.md)
+bound and erase recordings, synchronize capture/reset, and flush speaker DMA on stop.
+Keep source in `project.yaml` and `modules/`; never edit generated `build/`.
+
+Voice example: [Clawd firmware and agent](https://github.com/davidstalmarck/clawd-bot).
+Its laptop bridge is a reference, not our deployment path.

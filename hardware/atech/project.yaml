@@ -1,3 +1,68 @@
 name: pink-hack-pcm-test
 board: 14port
-modules: []
+modules_path: ./modules
+modules:
+  - {id: microphone, instance: mic, ports: [1, 2]}
+  - {id: speaker, instance: spk, ports: [13, 14]}
+  - {id: button, instance: btn, port: 3}
+  - {id: neopixel, instance: led, port: 4}
+code:
+  setup: |
+    spk.setVolume(0.2f);
+    led.setBrightness(20);
+    led.setAll(0, 0, 160); led.show();
+  loop: |
+    static int state = 0; // idle, recording, playback, draining, error
+    static int length = 0, offset = 0;
+    static unsigned long began = 0, drainUntil = 0;
+    bool pressed = btn.wasPressed();
+    bool released = btn.wasReleased();
+    auto status = [&](const char* text, int r, int g, int b) {
+      led.setAll(r, g, b); led.show();
+      Serial.printf("{\"type\":\"event\",\"payload\":{\"event_type\":\"state\",\"key\":\"pcm_state\",\"value\":\"%s\",\"free_heap\":%u}}\n", text, ESP.getFreeHeap());
+    };
+    bool request = pressed;
+    if (atech_action == "pcm_record") {
+      if (state == 0 || state == 4) request = true;
+      else atechFail("test is busy");
+      atechDone();
+    }
+    if (atech_action == "pcm_stop" || (pressed && (state == 2 || state == 3))) {
+      spk.stop(); mic.clearRecording();
+      state = 0; length = offset = 0; request = false;
+      status("interrupted", 0, 0, 160);
+      if (atech_action == "pcm_stop") atechDone();
+    }
+    if (request && (state == 0 || state == 4)) {
+      spk.stop(); mic.startRecording();
+      began = millis(); state = mic.isRecording() ? 1 : 4;
+      status(state == 1 ? "recording" : "capture_error", state == 1 ? 0 : 160, state == 1 ? 160 : 0, 0);
+    }
+    if (state == 1 && (released || millis() - began >= 2000 || !mic.isRecording())) {
+      mic.stopRecording(); length = mic.getRecordingLength(); offset = 0;
+      const int16_t* samples = mic.getRecording();
+      if (!samples || length == 0) {
+        mic.clearRecording(); state = 4;
+        status("empty_capture", 160, 0, 0);
+      } else {
+        uint64_t squares = 0; int peak = 0, clipped = 0;
+        for (int i = 0; i < length; ++i) {
+          int v = samples[i], magnitude = abs(v);
+          squares += (int64_t)v * v;
+          if (magnitude > peak) peak = magnitude;
+          if (magnitude >= 32767) ++clipped;
+        }
+        Serial.printf("{\"type\":\"event\",\"payload\":{\"event_type\":\"sensor\",\"key\":\"pcm_capture\",\"value\":{\"rate\":16000,\"samples\":%d,\"capture_ms\":%lu,\"rms\":%.1f,\"peak\":%d,\"clipped\":%d}}}\n", length, millis() - began, sqrt((double)squares / length), peak, clipped);
+        state = 2; status("playback", 140, 100, 0);
+      }
+    }
+    if (state == 2) {
+      int count = min(64, length - offset); // <=4 ms writes keep the button responsive.
+      spk.writeSamples(mic.getRecording() + offset, count); offset += count;
+      if (offset >= length) { state = 3; drainUntil = millis() + 150; }
+    }
+    if (state == 3 && (long)(millis() - drainUntil) >= 0) {
+      spk.stop(); mic.clearRecording(); state = 0; length = offset = 0;
+      status("playback_completed", 0, 0, 160); // Human hearing still determines pass.
+    }
+    yield();

@@ -6,9 +6,9 @@ provenance: "Unvetted Synthetic"
 
 Research date: 2026-10-24. Workspace revision: `502e43af5377a6553ff17a365e73859abf7b316a`, with existing uncommitted documentation preserved. This worker owns API discovery only. The main thread owns the PRD, app architecture, status, and the storage decision.
 
-The configured Azure `gpt-live-1` access test passed using the repository root `.env`. A real primary Live WebSocket produced `session.started`, then `session.closed` after graceful shutdown. Audio, tool execution, journal integration, and Atech remain untested. The earlier Azure Realtime rejection was the wrong protocol for this deployment and is superseded as a GPT-Live blocker. A direct OpenAI project key is not required for this configured Azure path.
+The configured Azure `gpt-live-1` access test passed using root `.env`, and the backend owner subsequently verified authenticated deployed WSS, real Azure Live synthetic PCM, agent saving, and owned Turso reread. Arduino capture/playback, Lovable browser voice, and 300-second runtime reconnect remain untested. The earlier Realtime rejection used the wrong protocol and is superseded as a Live blocker. A direct OpenAI project key is not required for this Azure path.
 
-The latest requirement is voice through Atech's microphone and speaker. A browser microphone test would not satisfy it. Hosting is the existing Vercel project with existing Turso storage; Vercel device-WSS capability and real audio remain separate verification gaps. Earlier laptop/VM hosting proposals are superseded.
+The hardware requirement is voice through Atech's actual microphone and speaker. The deployed synthetic PCM test proves the same-service relay and agent persistence, not physical hardware. Hosting is the existing Vercel project with existing Turso storage. Earlier laptop/VM hosting proposals are superseded; the former Azure VM is confirmed deallocated.
 
 ## Current application deployment
 
@@ -16,7 +16,15 @@ The backend owner reports direct Journal domain/agent/device integration in the 
 
 The backend owner externally verified production `https://pink-hack.vercel.app`, deployment `dpl_Ak43VzrcBBiwjuD27reY4y6e4WNF`, immutable host `https://pink-hack-38g1zdff7-quasr.vercel.app`. Health returned 200 and unauthenticated API access 401. Authenticated Better Auth session, real Turso direct Journal POST/reload/PATCH, exact retry, conflicting payload, and stale revision checks passed. Both `http://localhost:8080` and canonical public Lovable preview CORS/trusted origins passed. This supersedes the earlier pending-deployment diagnostics.
 
-Additive Turso migration passed with a private pre-migration backup, unchanged legacy row counts, and an empty foreign-key check. Current client modules and direct voice callback are frozen for frontend wiring. Device WSS rejected an unauthenticated request with 401, but authenticated upgrade, PCM audio, and full frontend voice/agent behavior remain unverified by this report. These production checks were run by the backend owner; this thread did not duplicate them or repeat paid startup/provisioning.
+Additive Turso migration passed with a private pre-migration backup, unchanged legacy row counts, and an empty foreign-key check. Current client modules and direct voice callback are frozen for frontend wiring. Authenticated device WSS subsequently passed the synthetic PCM/agent-save test below. The backend owner ran these checks; this thread did not duplicate them or repeat paid startup/provisioning.
+
+## Authenticated deployed PCM and agent-save proof
+
+The same Vercel deployment's `wss://pink-hack.vercel.app/api/v1/device/audio` passed an authenticated roundtrip with real Azure Live 16 kHz PCM and synthetic speech. The relay sent 132,200 input PCM bytes and received 256,000 output PCM bytes. The application agent saved an owned `source:"atech"` entry at revision 1. HTTP reread confirmed the synthetic heard garden wording and matching BlockNote content. No errors occurred.
+
+The backend owner conditionally released the synthetic demo-device claim after WebSocket closure. The real owner can now provision privately; no duplicate synthetic claim or paid startup test is needed. This is not Arduino microphone/speaker evidence. Lovable browser voice and the 300-second device-function reconnect have not been runtime exercised by this test.
+
+Source is integrated in `99c316c`; verification notes are committed in `4d45f10`. The owner reports the final 51/51 tests, all workspace type checks, and build passing. [Actual backend evidence and fixed device contract](backend.md) record the test and its limits. These are backend-owner results, not a duplicate probe by this documentation thread.
 
 ## Corrected Azure GPT-Live access probe
 
@@ -46,7 +54,7 @@ The isolated test loaded the root `.env` directly, opened one Azure Live WebSock
 }
 ```
 
-The backend owner received this corrected result and the reference adapter paths. Remaining verification is backend-mediated WebRTC, real input/output audio, delegated reasoning and tools, persisted journal output, and Atech. Direct `api.openai.com` access was not tested and is unnecessary for this Azure connection.
+The backend owner received this initial access-only result and the reference adapter paths. Subsequent deployed synthetic PCM, application-agent saving, and Turso reread are recorded above. Remaining runtime checks are Lovable browser voice, actual Arduino capture/playback, and 300-second device reconnect. Direct `api.openai.com` access was not tested and is unnecessary for this Azure connection.
 
 ## Earlier .env Realtime probe, superseded as a Live blocker
 
@@ -231,17 +239,17 @@ Finish required function results and continuations before closing a production c
 
 The endpoint inventory and SIP guide also document `POST /v1/live/sessions/{session_id}/hangup`, with no body and `200 OK` on success. Keep the sideband alive for `session.closed`. This was verified in the [SIP guide][sip-close]; the OpenAPI tool could not retrieve that listed endpoint, and its linked method-document fetch returned 404. The proposed access probe uses the separately verified `session.close` event, not an assumed HTTP fallback.
 
-The Azure access-only pass above proves session startup and clean termination. It does not prove device audio, delegated model access, storage writes, or app display. A complete acceptance check must additionally exercise the Atech microphone and speaker, a synthetic personal/medical check-in, one authenticated save, reading the saved entry in the app, a repeated-call retry, interruption during playback, and a clean stop. These checks remain pending.
+The initial access-only pass proves startup and clean termination. The later deployed synthetic speech test separately proves authenticated PCM relay, application-agent saving, and owned Turso reread. Full acceptance still needs actual Atech microphone/speaker and Lovable browser interaction, plus the 300-second runtime reconnect check. Do not generalize synthetic audio to hardware playback.
 
 ## Atech and app dependencies for the main thread
 
 The existing platform research reports Atech Clawd firmware with 512-sample base64 PCM microphone chunks and `play_pcm` output at 16 kHz mono signed 16-bit audio. Current OpenAI primary WebSocket schemas accept 16 kHz PCM, so a bridge may be able to preserve that rate. This is a format match, not proof of compatible event framing, throughput, capture behavior, or playback.
 
-A fresh unauthenticated retrieval of `https://atech.dev/code/clawd.cpp` returned HTTP 403 in this worker's environment. The Atech format claim therefore remains evidence from the earlier repository research, not newly verified source or hardware behavior. Confirm the actual starter-kit board, modules, firmware, input rate, output rate, gateway authentication, and user/device binding before relying on it. [Existing platform research](gpt_live_atech_lovable_context.md), [Atech source URL][clawd]
+The initial unauthenticated retrieval of `https://atech.dev/code/clawd.cpp` returned HTTP 403. That historical format claim did not verify hardware behavior. The device owner has since inspected the Clawd SDK reference and confirmed the Big Kit 14-port board, with microphone 1-2, speaker 13-14, button 3, and light grid 4. SDK `atech==1.0.0a11` is installed and physical testing is in progress. Its USB serial defaults require firmware adaptation for direct device WSS. Capture/playback rates, interruption behavior, and authenticated device integration still need runtime evidence. See the [current device guide](atech-firmware-guide.md) and [physical test project](../hardware/atech/README.md).
 
-The device bridge must preserve audio order and pace, decode output, bound playback queues, and handle interruption and echo. Drive listening/speaking indicators from verified capture and playback state. GPT-Live transcript deltas and backend completion do not establish what the user actually heard. Standalone WebRTC or TLS WebSocket support on the specific Atech device remains unverified. A laptop/native or persistent server bridge is a candidate, not an approved deployment or a tested implementation.
+The deployed same-service relay now has authenticated WSS/synthetic PCM proof. Actual hardware must still preserve audio order and pace, bound speaker queues, and handle interruption/flush and echo. Drive indicators from verified capture/playback state; transcript or backend completion does not establish physical playback. Follow the fixed deployed contract in backend.md. Laptop/VM bridge proposals are historical, not the current implementation.
 
-The app and Atech need the same authenticated backend records and session context. Proposed responsibilities for root reconciliation are session ownership, user/device authorization, reading personal and medical pages, saving daily journal entries, and returning a saved record ID after persistence succeeds. Select record ownership and permitted destinations on the backend. Keep OpenAI and storage credentials there.
+The completed backend owns user/device authorization, session ownership, context reads across all owned custom pages, direct Journal writes, and saved entry IDs/revisions after persistence succeeds. Its contract is frozen for integration. The sole frontend writer owns canonical Jonas browser WebRTC acceptance, and the Atech owner owns physical capture/playback and device integration. Keep provider and storage credentials on the backend.
 
 The developer confirmed app-owned storage with no Notion integration. The existing Better-T-Stack backend owns the shared API and same-service device audio relay, with Lovable as external frontend. Latest deployment direction uses the existing Turso database through root `.env` `DATABASE_URL` and `DATABASE_API_KEY`; no new database service/container is provisioned. The backend owner handles private token mapping, migrations, and Turso persistence verification. The PRD and app contracts define generic pages and flexible journal content/properties. GPT-Live `store` controls optional provider session recording, not the app's database. The access-only Live probe provides no Turso persistence evidence.
 

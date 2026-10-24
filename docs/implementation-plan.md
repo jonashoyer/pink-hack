@@ -12,6 +12,8 @@ The existing backend owner retains source, migrations, runtime, deployment, and 
 
 Hosting is the existing Vercel Pink Hack project, with the existing Turso database. Preserve Turso data. Remove former Azure VM host references from active frontend/device instructions; Azure GPT-Live remains the voice provider.
 
+Sections 1 and 2 are implemented in the completed backend handoff. There are no pending backend contract changes. The sole frontend writer is integrating the canonical Jonas app and checking browser acceptance; the Atech owner is conducting physical SDK testing. These owners retain the remaining runtime work.
+
 ## 1. Simplify the existing services
 
 Expose direct `POST /api/v1/journal` and revision-checked `PATCH /api/v1/journal/:id` over generic BlockNote content and flexible properties. Reuse authentication, ownership validation, transactions, and operation-ID retry checks.
@@ -28,7 +30,7 @@ Use owned voice-session identity and an optional journal entry target for sessio
 
 Clarify ambiguous intent conversationally. Do not add another proposal/approval subsystem. Merge bounded transcript fragments, honor abort, and stop subsequent actions on interruption. Already saved entries remain ordinary editable records.
 
-Revise the reusable client coherently with actual backend signatures before frontend wiring. Keep exact provider session/model validation and graceful closure. Existing access-only Azure startup/close evidence does not prove the revised agent/write path.
+The reusable client and backend signatures are frozen for frontend wiring. Keep exact provider session/model validation and graceful closure. The deployed synthetic PCM test proves the agent/write path; browser WebRTC acceptance remains separate.
 
 ## 3. Wire the sole Lovable frontend
 
@@ -44,9 +46,9 @@ Verify page and journal save/reload against real Turso-backed API, then voice cr
 
 The device owner aligns prompts with direct journal tools and no mandatory review-revision/confirmation-phrase gate. PTT, interruption, stop, and connection states remain audio controls. Authentication and record revisions still apply.
 
-The backend owner checks Vercel native WSS capability before claiming a same-service device relay. Report a concrete hosting restriction if present; do not invent an endpoint or reintroduce Azure VM hosting or a configurable laptop bridge. Any incompatible requirement needs coordinator reconciliation.
+The backend owner verified the same-service authenticated WSS endpoint `wss://pink-hack.vercel.app/api/v1/device/audio` with real Azure Live and synthetic 16 kHz PCM. The agent saved an owned Turso entry, and HTTP reread confirmed the heard wording and BlockNote content. Use that fixed contract; no Azure VM hosting or laptop bridge is required by this verified deployment.
 
-Once a supported route exists, verify actual microphone/speaker PCM, ownership, direct journal writes, interruptions, and app retrieval. Follow the Uno Q skill exactly if that board becomes part of deployment.
+The confirmed Big Kit 14-port layout is microphone 1-2, speaker 13-14, button 3, light grid 4. The Atech owner has physical testing with SDK `atech==1.0.0a11` in progress and owns adaptation of the SDK's USB serial defaults to direct device WSS. The sole frontend writer owns Lovable browser voice acceptance. The 300-second device-function reconnect has not been runtime exercised and needs an explicit check. The synthetic singleton claim has been released, so the real owner can provision privately. Follow the Uno Q skill exactly if that board becomes part of deployment; do not repeat paid startup or create another synthetic claim.
 
 ## 5. Verify the simple demo
 
@@ -56,4 +58,4 @@ Check duplicate retries, stale edits, foreign-user access, failed-write feedback
 
 ## Current handoff
 
-Production HTTP is verified at fixed `https://pink-hack.vercel.app`, deployment `dpl_Ak43VzrcBBiwjuD27reY4y6e4WNF`. The backend owner passed external health, unauthenticated rejection, authenticated Better Auth session, real Turso direct create/reload/update, identical retry, changed-payload conflict, and stale revision checks. Frozen client and bounds are in current app contracts. The sole frontend writer has the fixed host and wiring handoff. Authenticated device audio and the full frontend voice/agent path remain separate checks; do not duplicate paid startup or provision the singleton device. Test-file ownership remains with its assigned worker.
+Production HTTPS and authenticated WSS are verified at fixed `https://pink-hack.vercel.app`, deployment `dpl_Ak43VzrcBBiwjuD27reY4y6e4WNF`. The backend owner passed HTTP/auth/direct Turso checks and the synthetic PCM/real Azure Live/agent-save roundtrip with owned reread. Source is integrated in `99c316c`, verification docs committed in `4d45f10`, and final 51/51 tests, workspace types, and build passed. Frozen client and bounds are in current app contracts. Lovable browser voice, physical Arduino capture/playback, and 300-second reconnect remain owner runtime checks. The synthetic singleton claim is released. Test/source ownership stays with its assigned workers.
