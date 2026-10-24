@@ -10,9 +10,10 @@
 #endif
 
 namespace {
-constexpr const char* HOST = "pink-hack.vercel.app";
+constexpr const char* HOST = "172.20.10.2";
+constexpr uint16_t PORT = 8443;
 constexpr const char* AUDIO_PATH = "/api/v1/device/audio";
-constexpr const char* PROVISION_URL = "https://pink-hack.vercel.app/api/v1/device/provision";
+constexpr const char* PROVISION_URL = "https://172.20.10.2:8443/api/v1/device/provision";
 constexpr uint32_t STALE_INPUT_MS = 450;
 constexpr uint32_t READY_TIMEOUT_MS = 45000;
 struct PersistentIdentity {
@@ -159,6 +160,7 @@ void VoiceTransport::reportFromTask() {
     d["tx_bytes"] = _txBytes.load(); d["rx_bytes"] = _rxBytes.load(); d["dropped_bytes"] = _droppedBytes.load();
     d["tx_queue_bytes"] = _mic->pendingSamples()*2 + _txSamples*2;
     d["rx_queue_bytes"] = _speaker->queuedBytes(); d["i2s_written_bytes"] = _speaker->playedBytes();
+    d["i2s_pcm_peak"] = _speaker->pcmPeak();
     d["mic_overruns"] = _mic->streamOverruns(); d["speaker_faults"] = _speaker->faults();
     d["flush_count"] = _speaker->flushCount(); d["generation"] = _generation; d["turns"] = _turns.load();
     d["attempt"] = _attempts; d["retry_ms"] = (int32_t)(_nextAttempt-millis()) > 0 ? _nextAttempt-millis() : 0;
@@ -242,8 +244,10 @@ void VoiceTransport::openSocket() {
     _attempt = true; _connected = false; _closePending = false; ++_attempts;
     _openedAt = millis(); _readyDeadline = _openedAt+READY_TIMEOUT_MS;
     _indicator = Indicator::Connecting; _ready = false; _generation = 0;
-    _authHeader = "Authorization: Bearer " + _token + "\r\n";
-    _ws.beginSslWithCA(HOST, 443, AUDIO_PATH, PINKHACK_CA_ROOTS, "");
+    // setExtraHeaders appends CRLF itself. A trailing CRLF here ends the
+    // HTTP upgrade early and leaves User-Agent bytes in the WebSocket stream.
+    _authHeader = "Authorization: Bearer " + _token;
+    _ws.beginSslWithCA(HOST, PORT, AUDIO_PATH, PINKHACK_CA_ROOTS, "");
     _ws.setExtraHeaders(_authHeader.c_str());
     // One library attempt at a time. On disconnect we stop calling loop and
     // schedule our own capped backoff, including HTTP 409 lease conflicts.
@@ -268,9 +272,14 @@ void VoiceTransport::websocketEvent(WStype_t type, uint8_t* payload, size_t leng
         if (!_connected || !_enabled || _awaitFlush || _interruptRequested || _stopRequested || _closePending) {
             _droppedBytes.fetch_add(length); return;
         }
+        // The official voice example mutes input while reply audio plays.
+        // Receiving a reply is not a user interruption. Keep the toggle latch
+        // and session; pause capture until physical playback has drained.
+        if (_captureActive.exchange(false)) {
+            _mic->stopStream(); clearTx(); _endPending = false;
+            state("capture_muted_for_reply");
+        }
         if (!_speaker->enqueuePCM(payload, length)) { _droppedBytes.fetch_add(length); abortTurn("output_queue_or_format_error"); return; }
-        // Provider output during a held capture is interrupted before further PCM.
-        if (_captureActive) { _interruptRequested = true; _awaitFlush = true; flushLocal(); _recordRequested = true; return; }
         _rxBytes.fetch_add(length); _ready = false; _outputSettledAt = millis();
         _indicator = Indicator::Speaking;
         return;

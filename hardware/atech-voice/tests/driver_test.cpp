@@ -67,15 +67,31 @@ int main() {
     puts("PASS microphone fresh FIFO, single consumption, release drain, bounded overflow, discard");
 
     Speaker speaker(1,2,3); speaker.begin(); speaker.setVolume(0.4f);
-    int16_t oldPCM[512], newPCM[512]; std::fill_n(oldPCM,512,1000); std::fill_n(newPCM,512,2000);
+    int16_t oldPCM[512], newPCM[512]; std::fill_n(oldPCM,512,10); std::fill_n(newPCM,512,20);
     assert(!speaker.enqueuePCM((uint8_t*)oldPCM,3)); assert(!speaker.enqueuePCM((uint8_t*)oldPCM,2050));
     assert(speaker.enqueuePCM((uint8_t*)oldPCM,sizeof(oldPCM)));
     until([&]{return speaker.playedBytes()>0;},"speaker writes"); speaker.stop();
     assert(stopCalls && clearCalls && startCalls); assert(!speaker.isPlaying());
     assert(speaker.enqueuePCM((uint8_t*)newPCM,sizeof(newPCM)));
     until([&]{return !speaker.isPlaying();},"physical drain deadline");
-    { std::lock_guard<std::mutex> lock(audioMutex); assert(!dma.empty()); for (auto value: dma) assert(value==800); }
+    { std::lock_guard<std::mutex> lock(audioMutex); assert(!dma.empty()); for (auto value: dma) assert(value==1024); }
+    assert(speaker.pcmPeak()==1024); // Quiet PCM gets the 128x gain cap, then volume.
     puts("PASS speaker stop clears queued/inflight DMA; new generation has no stale PCM");
+    int16_t limits[512];
+    for (int i=0;i<512;++i) limits[i]=(i&1)?32767:-32768;
+    speaker.stop(); assert(speaker.enqueuePCM((uint8_t*)limits,sizeof(limits)));
+    until([&]{return !speaker.isPlaying();},"limited PCM drain");
+    { std::lock_guard<std::mutex> lock(audioMutex);
+      assert(!dma.empty());
+      for (auto value: dma) assert(value==-13107 || value==13106); }
+    assert(speaker.pcmPeak()==13107); // Full-scale PCM gets no gain, only volume.
+    int16_t speech[512];
+    for (int i=0;i<512;++i) speech[i]=(i&1)?10000:-10000;
+    speaker.stop(); assert(speaker.enqueuePCM((uint8_t*)speech,sizeof(speech)));
+    until([&]{return !speaker.isPlaying();},"speech PCM drain");
+    { std::lock_guard<std::mutex> lock(audioMutex);
+      assert(!dma.empty());
+      for (auto value: dma) assert(value==8000 || value==-8000); } // Normalized, not clipped.
     writeDelay=4; bool full=false;
     for (int i=0;i<100;++i) if (!speaker.enqueuePCM((uint8_t*)newPCM,sizeof(newPCM))) { full=true; break; }
     // The counter can include the single dequeued worker frame while it waits
@@ -84,6 +100,7 @@ int main() {
     failWrites=true; auto faults=speaker.faults(); assert(speaker.enqueuePCM((uint8_t*)newPCM,sizeof(newPCM)));
     until([&]{return speaker.faults()>faults;},"write failure signal");
     until([&]{return !speaker.isPlaying();},"write failure flush");
+    assert(speaker.pcmPeak()==13107); // Failed writes cannot invent amplitude.
     puts("PASS speaker queue bound, bad frame rejection, write failure detection/flush");
     fflush(stdout); std::_Exit(0); // Driver tasks intentionally run for firmware lifetime.
 }

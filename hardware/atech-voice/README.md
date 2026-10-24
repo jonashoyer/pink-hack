@@ -4,10 +4,12 @@ provenance: "Unvetted Synthetic"
 
 # Native Atech voice
 
-Current status: toggle firmware is flashed and passes boot, WiFi and private
-backend authentication. The socket closes before session readiness, so physical
-GPT speech and Journal saving remain blocked. The latest source-only close
-visibility update is built and tested but not flashed. See `VERIFICATION.md`.
+Current status: the WebSocket upgrade defect is fixed and flashed. The physical
+board reaches Azure GPT-Live `listening` through the temporary Mac backend.
+Real microphone input and reply PCM reached the service/device. The human heard
+no reply, and the speaker driver reported write failures. A 20 ms write-timeout
+candidate is being tested; audible reply and Journal persistence remain unverified.
+Idle provider failures have been observed before audio input. See `VERIFICATION.md`.
 
 Buildable ESP32-S3 firmware for the fixed Pink Hack service. This project is separate from the heard local PCM fallback in `../atech/`. All new files live here. No board, USB, serial port, provisioning endpoint, or paid voice session was accessed by the implementation worker.
 
@@ -39,11 +41,11 @@ For `device_token_invalid_reset_required`, `provision_failed_reset_required`, or
 
 ## Audio and conversation behavior
 
-WSS is always `wss://pink-hack.vercel.app:443/api/v1/device/audio`. Binary data is 16,000 Hz mono signed PCM16LE, without WAV/base64 framing. Capture sends up to 1,024 bytes per packet, paced at 32,000 bytes/second on a phase-locked clock anchored to the first fresh packet. Deadlines advance by audio duration so task/socket overhead does not accumulate. Phase lag over 16 ms, or a send finishing past its next deadline, aborts rather than bursting through a backlog. Received frames must be nonempty, even, and at most 2,048 bytes.
+The current fixed WSS target is `wss://timer-cab-continuously-ghz.trycloudflare.com/api/v1/device/audio`, a temporary tunnel to this Mac's existing backend. The tunnel must stay running. Vercel transport has not been retested with the fix. Binary data is 16,000 Hz mono signed PCM16LE, without WAV/base64 framing. Capture sends up to 1,024 bytes per packet, paced at 32,000 bytes/second on a phase-locked clock anchored to the first fresh packet. Deadlines advance by audio duration so task/socket overhead does not accumulate. Phase lag over 16 ms, or a send finishing past its next deadline, aborts rather than bursting through a backlog. Received frames must be nonempty, even, and at most 2,048 bytes.
 
 The microphone ring holds 16,384 bytes. It consumes each retained sample once, rejects the read spanning a PTT boundary, and drains two subsequent blocks to remove pre-PTT RX DMA audio. Allow roughly 96 ms after capture starts before speaking. The second press freezes capture, drains existing ring and final partial packet at the same pace, then sends `audio_turn_end`. There is no endpoint/commit guarantee: the server adds its documented one second of paced silence. Overruns or input older than 450 ms abort the turn, discard pending speech, report an error, and require release before another turn.
 
-The speaker queue holds 32,768 PCM bytes, plus at most one 1,024-byte task frame. Including stereo DMA, PCM-equivalent output buffering is at most 35,840 bytes. The pinned WebSocket library can additionally allocate a bounded 15 KiB received frame; the total remains below the 64,000-byte direction limit. Only the speaker task calls I2S write. Each write contains at most 64 mono samples and has a 5 ms timeout; partial/failing writes signal an error and flush. A received chunk older than 1,500 ms is stale and is rejected. Queue overflow never reports successful playback.
+The speaker queue holds 32,768 PCM bytes, plus at most one 1,024-byte task frame. Including stereo DMA, PCM-equivalent output buffering is at most 35,840 bytes. The pinned WebSocket library can additionally allocate a bounded 15 KiB received frame; the total remains below the 64,000-byte direction limit. Only the speaker task calls I2S write. Each write contains at most 64 mono samples and has a 20 ms timeout; partial/failing writes signal an error and flush. A received chunk older than 1,500 ms is stale and is rejected. Queue overflow never reports successful playback.
 
 `spk.stop()` takes the same mutex as the writer, advances its generation, drains the queue, and stops/zeros/restarts I2S DMA before returning. An old task-local chunk cannot write after that barrier. Main-loop stop can wait for the current small I2S write, but never for an entire audio chunk or TLS request. Network connection, portal, HTTPS, and WSS processing run on a separate task. Speaker physical activity includes queued PCM, task PCM, and a conservative 80 ms DMA drain deadline. It is an estimate of hardware drain, not evidence of human hearing.
 

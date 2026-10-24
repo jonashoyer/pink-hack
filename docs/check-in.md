@@ -4,7 +4,7 @@ provenance: "Unvetted Synthetic"
 
 # Event check-in answers
 
-Collected on 2026-10-24 from the live Notion pages, the public check-in form, project requirements, and Lovable project metadata. The form has not been submitted by this work.
+Collected on 2026-10-24 from the live Notion pages, the public check-in form, project requirements, and Lovable project metadata. The user confirmed check-in is submitted; this agent performed no form action.
 
 ## Form answers
 
@@ -22,7 +22,7 @@ Current public landing:
 
 https://pink-hack-journal.lovable.app/
 
-Current Kindalong publication is source `a3fc982cbf666e963c5eeef7eb10428dc984940b`, Lovable deployment `bc2ab442-b0d5-4acc-a4c9-1cc6ad8b3b62`, at the same public landing and `/app` routes. Anonymous route HTTP, served pink/rose CSS, actual app image and visible Kindalong branding were verified. The fictional Emma, prototype/device concept and shared-demo notices remain. The app's behavior and layout were unchanged by the rebrand; approved layout migration and human spoken/Stop verification remain separate work. [Demo evidence](demo-validation.md) retains this and previous publication records. Submission status remains UNKNOWN; no form action was performed by this work.
+Current Kindalong publication is source `a3fc982cbf666e963c5eeef7eb10428dc984940b`, Lovable deployment `bc2ab442-b0d5-4acc-a4c9-1cc6ad8b3b62`, at the same public landing and `/app` routes. Anonymous route HTTP, served pink/rose CSS, actual app image and visible Kindalong branding were verified. The fictional Emma, prototype/device concept and shared-demo notices remain. The app's behavior and layout were unchanged by the rebrand; approved layout migration and human spoken/Stop verification remain separate work. [Demo evidence](demo-validation.md) retains this and previous publication records. The user confirmed submission is done; this agent performed no form action.
 
 ## Submission requirements
 

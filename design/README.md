@@ -19,7 +19,7 @@ This is the single current design specification for the existing Lovable fronten
 
 Use the **Kindalong** wordmark and previous pink/rose theme consistently in Lovable and presentation. The existing four screenshots and logo sheet show the superseded Here With You/Sage identity; retain them as layout and geometry references, not current-brand exports. The user selected logo **F, Held**, a heart cradled by an open hand, which replaces the listening line. Heart: rose `#a04b6f`, the deck accent `oklch(53% .12 355)`. Hand: petal `#e199af`. On rose or dark surfaces, use [mark-reverse.svg](assets/kindalong/mark-reverse.svg), with a white heart and a `#f5c1cc` hand. Use [mark-mono.svg](assets/kindalong/mark-mono.svg) where only one colour is available. The lockup is the mark beside "Kindalong" in a semibold serif (Georgia-like), with the mark about 1.6× the wordmark cap height. It is decorative next to the wordmark. Favicon, apple-touch and app-icon exports are in the same folder and have been checked at 16, 32 and 512px. Keep the mark small in app headers. Fresh implemented screenshots must come from the sole Lovable writer before the presentation labels them current.
 
-The screenshots are static image prototypes with fictional data. They do not implement a frontend, native app, backend behavior, or deployment. Their content is illustrative; never seed real records with the example rating or symptoms as a side effect of rendering.
+The screenshots are static image prototypes with fictional data. They do not implement a frontend, native app, backend behavior, or deployment. Their content is illustrative; never seed real records with the example rating or symptoms as a side effect of rendering. The user's separate ten-entry Emma Journal seed authorization permits clearly labelled fictional observations aligned with the existing context pages. The [seed manifest](../docs/demo-seed.md) records that operation; it does not establish voice or chart behavior.
 
 ## One product and three primary destinations
 
@@ -32,6 +32,8 @@ The screenshots are static image prototypes with fictional data. They do not imp
 Use the exact labels **Home / Journal / Symptom**. Home is the app's default destination. Keep one app shell, one set of components, one theme, and shared data. Do not build separate desktop and phone applications with independent styles or data. Native packaging has not been implemented or selected.
 
 Pages is not a primary tab. Preserve the backend's existing context pages and the assistant's use of them. Keep any existing context-page editing reachable through secondary settings rather than deleting records or disabling context. Day plans remain ordinary editable Journal blocks.
+
+Voice recording supplies working conversation context to the agent. The agent uses the saved persona/profile, context pages and tracking preferences to compose the final native BlockNote Journal note, explicitly requested metrics and any requested manageable Day plan. The recording action must not directly save a raw transcript or persist it in `original_text` by default. Show a saved result only after the final artifact write succeeds. This direct agent flow adds no required proposal, review, confirmation or check-in stage. Normal user-created editor entries and the ten authorized clearly fictional manual demo entries remain available.
 
 ## Visual system
 

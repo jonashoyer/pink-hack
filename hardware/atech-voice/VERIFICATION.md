@@ -4,6 +4,10 @@ provenance: "Unvetted Synthetic"
 
 # Worker verification
 
+Active device deadline: 2026-10-24 16:34:32 Europe/Copenhagen, 14:34:32 UTC.
+The user requires an audible device conversation and genuine Journal save.
+The authorized temporary Mac backend remains the demo target.
+
 Outcome on 2026-10-24: scoped native firmware implemented and buildable. Physical integration remains with root. The shared checkout's base HEAD was `e2d33adf15363239f64b2fd5610bb85ad8e3eb61`; this worker created only `hardware/atech-voice/`, with no commit or PR. Other owners' changes were preserved.
 
 Final SDK commands:
@@ -72,7 +76,7 @@ Backend owner verified terminal stop/cancel deployment
 retirement behavior. No device provisioning or provider audio probe accompanied
 that backend deployment.
 
-Latest flashed candidate SHA-256 is
+Previous failed flashed candidate SHA-256 is
 `aabfe86ef8817005a9b2cfe169faae7f7da2439450283ad122ac10f25457238b`.
 SDK build/upload and boot passed. It includes the requested recording toggle,
 25 ms button debounce, and deferred session sends after WebSocket maintenance.
@@ -116,6 +120,47 @@ local transport, socket error, bounded text and redaction checks. SDK build
 passed in 22.13 seconds with 66,580 bytes RAM and 1,575,057 bytes flash.
 The source-only artifact SHA-256 is
 `ece227481eae0d74a3ab17aecb1cf8f8a28a219db431d3143bd180b331093d48`.
-It is not flashed and does not establish a functional fix. No new session,
+At that source-only stage it was not flashed and did not establish a functional fix. No new session,
 provisioning, token rotation, provider request or audio attempt accompanied it.
 The next permitted hardware action is Main's authorized actual E2E attempt.
+
+## Mac backend and upgrade fix
+
+The user authorized parallel workers and a temporary backend on this Mac.
+The existing native backend runs without watch on port 8787, using existing
+Turso, `demo-user` and Azure `gpt-live-1`. The trusted tunnel is
+`https://timer-cab-continuously-ghz.trycloudflare.com`; HTTPS health returned
+200 and the served chain verified against GTS Root R4 already in the firmware.
+Runtime hashes and stop command are in
+`/Users/j/.local/share/pink-hack-atech/local-backend/manifest.json`.
+No device credential was rotated or reprovisioned.
+
+The first actual local candidate received Close 1002 before any start receipt.
+Root found `_authHeader` included a trailing CRLF while the pinned library
+already appends CRLF after extra headers. This ended the upgrade early and left
+`User-Agent` bytes in the WebSocket stream. An independent worker confirmed it.
+The backend's actual `ws` Receiver rejected that synthetic remainder with 1002
+and `WS_ERR_UNEXPECTED_RSV_2_3`; corrected headers left no remainder and a
+masked start frame was accepted. No backend or JSON changes were required.
+
+Root removed that trailing CRLF, validated and uploaded through Atech. Flashed
+SHA-256 is `5e3046c19791cdadf151f21b49c295957f2d55ad9dec86d6443336478a4432e0`.
+Actual device events reached `wss_connected`, `connecting`, then `listening`.
+The first explicit status showed connected/ready, attempt 1, no close or driver
+faults. Two provider failures occurred after about 30 seconds without audio,
+followed by successful reconnects; their provider cause is not established.
+The human was asked to use toggle recording for a Journal writing request.
+Vercel has not been retested.
+
+The human's actual toggle attempt sent 235,520 microphone PCM bytes and received
+43,392 reply PCM bytes. I2S accepted 47,872 PCM-equivalent bytes, but the human
+heard no reply. Three speaker faults and 36 flushes were observed. Incoming reply
+audio during capture repeatedly triggered interruption and generation restart;
+three `audio_turn_end` controls were recorded. There was no `saved` event or
+entry ID. Root stopped the failed conversation to repair playback, not for seed
+work. The runtime, token and database remained untouched.
+
+Root increased the timeout for each 64-sample I2S write from 5 to 20 ms, preserving
+the mutex/flush barrier and bounded queue. The physically heard local SDK uses a
+100 ms write timeout. All three actual-driver host checks and Atech validation
+passed. This scheduling-margin change is a candidate until a human hears it.

@@ -32,15 +32,18 @@ Journal presents dated entries and their editable body as in the approved screen
 
 Overall health is explicitly self-reported on 1 = very poor through 10 = very good, with missing values shown as Not rated. Symptom severity uses a separate 0 = none through 10 = severe scale where applicable. All overlays compatible individual symptom series without an aggregate health calculation. The design spec defines missing observations, dates, and source rules. Stable symptom metadata and one source of truth for a daily rating across multiple entries need implementation alignment; the screenshots do not add a backend API or schema. Do not derive ratings from qualitative speech or seed the illustrative 7/10 in real records.
 
-The voice agent handles writing. The user can also edit pages and journal entries directly. Normal unsaved editor text can remain locally while editing or recovering from a failed save; that is not a stored agent proposal workflow.
+The voice agent composes the final Journal entry from the conversation, saved persona/profile, context pages and tracking preferences. Speech and transcripts remain working conversation context by default. The app must not directly POST a raw recording transcript as a Journal entry or put it into durable `original_text` by default. The saved artifact is an organized native BlockNote note, with explicitly requested self-reported metrics and a manageable page-informed Day plan when requested. The assistant claims saving only after that artifact is persisted.
+
+The user can still create normal editor entries and edit pages or Journal entries directly. The separately authorized ten clearly labelled fictional manual demo entries remain permitted. Neither normal editor writing nor fictional seeding is evidence of an agent-composed voice save. Normal unsaved editor text can remain locally while editing or recovering from a failed save; that is not a stored agent proposal workflow.
 
 ## Direct voice flow
 
 1. The user starts the assistant. The backend uses the fixed demo user and its voice conversation.
-2. The agent reads all live owned context pages and relevant journal history.
-3. It follows the conversation and the user's writing requests, creating an entry through Journal POST or updating one through Journal PATCH.
-4. The backend validates the owner, content, operation ID, and expected revision, then persists the write to Turso.
-5. The assistant reports the actual saved result. Later corrections are direct updates to that entry.
+2. The agent reads the saved persona/profile, all live owned context pages, tracking preferences and relevant journal history.
+3. It uses speech as working context and composes the final native BlockNote artifact requested by the user, retaining physical and emotional experiences, explicitly requested metrics and any requested page-informed Day plan.
+4. The agent creates that artifact through Journal POST or updates the selected entry through Journal PATCH. The recording/transcript control must not bypass the agent with a raw-transcript POST.
+5. The backend validates the owner, content, operation ID, and expected revision, then persists the write to Turso.
+6. The assistant reports the actual saved result. Later corrections are direct updates to that entry.
 
 The agent composes tool arguments in its conversation context. It does not create a held server-side proposal or require a draft/confirm/commit sequence. It asks a conversational clarification when intent or the target entry is ambiguous.
 
@@ -68,6 +71,7 @@ Stopping voice prevents further actions. It does not silently undo entries alrea
 - Journal updates require the current expected revision. A stale write conflicts instead of replacing newer content.
 - A stable operation ID makes retrying a write return the original result. The same ID with changed content conflicts.
 - The agent announces successful saving only after a storage response confirms it.
+- Raw speech is working context, not the durable Journal body or `original_text` by default. The voice path saves the agent-composed artifact using the person's saved context and explicit tracking choices.
 - Failed requests report failure honestly. Conversation working text and normal local editor text can support retry without a separate proposal resource.
 - Provider and Turso credentials remain server-side. Root `.env` supplies existing Turso `DATABASE_URL` and `DATABASE_API_KEY`, with token mapping verified by the backend owner.
 - Preserve legacy records during the transition. Do not delete old data merely because the active API is simpler.
@@ -91,7 +95,7 @@ The [breast cancer demo story](docs/demo-script.md) uses the current Notion comp
 
 ## Acceptance
 
-Verify adding unfamiliar context pages, saving/reloading native blocks, a page-informed voice conversation that directly creates a Journal entry with unfamiliar properties, and a direct Day-plan update preserving the rest of the page.
+Verify adding unfamiliar context pages, saving/reloading native blocks, and a page-informed voice conversation that directly creates a final Journal artifact with explicit requested properties and a manageable Day plan. Verify the recording control cannot create a raw-transcript entry, that raw speech is not persisted in `original_text` by default, and that the saved claim follows the actual artifact write. Verify a direct Day-plan update preserves the rest of the page. Normal user-authored editor entries and the ten authorized fictional manual examples remain supported.
 
 Verify requests without cookies or user tokens, rejection of client-supplied owner changes, inaccessible legacy-owner records, duplicate retry behavior, stale revision conflicts, failed-write feedback, and stop/interruption preventing subsequent actions. Real microphone/speaker and application-agent checks are distinct from access-only session startup.
 

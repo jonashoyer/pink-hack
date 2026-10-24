@@ -1,4 +1,5 @@
 #include "speaker.h"
+#include <algorithm>
 #include <driver/i2s.h>
 
 void Speaker::begin() {
@@ -7,7 +8,7 @@ void Speaker::begin() {
     config.sample_rate = 16000; config.bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT;
     config.channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT;
     config.communication_format = I2S_COMM_FORMAT_STAND_I2S;
-    config.dma_buf_count = 4; config.dma_buf_len = 256; config.tx_desc_auto_clear = true;
+    config.dma_buf_count = 8; config.dma_buf_len = 256; config.tx_desc_auto_clear = true;
     i2s_pin_config_t pins = {};
     pins.bck_io_num = _bclk; pins.ws_io_num = _lrclk;
     pins.data_out_num = _data; pins.data_in_num = I2S_PIN_NO_CHANGE;
@@ -35,6 +36,7 @@ bool Speaker::enqueuePCM(const uint8_t* bytes, size_t length) {
         xQueueSend(_queue, &c, 0);
         memset(&c, 0, sizeof(c));
     }
+    _lastEnqueue = millis();
     xSemaphoreGive(_mutex); return true;
 }
 void Speaker::stop() {
@@ -50,14 +52,22 @@ void Speaker::stop() {
     esp_err_t cleared = i2s_zero_dma_buffer(I2S_NUM_0);
     esp_err_t started = i2s_start(I2S_NUM_0);
     if (stopped != ESP_OK || cleared != ESP_OK || started != ESP_OK) ++_faults;
-    _drainUntil = 0; _inflight = false; ++_flushes;
+    _drainUntil = 0; _inflight = false; _envelope = 0; ++_flushes;
     xSemaphoreGive(_mutex);
 }
 void Speaker::task(void* context) { static_cast<Speaker*>(context)->playback(); }
 void Speaker::playback() {
-    Chunk c = {}; int16_t stereo[128] = {};
+    Chunk c = {}; int16_t stereo[2 * WRITE_SAMPLES] = {};
+    bool primed = false; uint32_t primedGeneration = 0;
     while (true) {
-        if (xQueueReceive(_queue, &c, pdMS_TO_TICKS(10)) != pdTRUE) continue;
+        if (primedGeneration != _generation.load()) primed = false;
+        // Prebuffer each reply so network jitter costs one short delay
+        // instead of continuous crackle.
+        if (!primed && _queuedBytes.load() < PREBUFFER_BYTES && millis() - _lastEnqueue.load() < STALL_MS) {
+            vTaskDelay(pdMS_TO_TICKS(10)); continue;
+        }
+        if (xQueueReceive(_queue, &c, pdMS_TO_TICKS(10)) != pdTRUE) { primed = false; continue; }
+        primed = true; primedGeneration = c.generation;
         xSemaphoreTake(_mutex, portMAX_DELAY);
         bool valid = c.generation == _generation.load();
         if (valid) { _queuedBytes.fetch_sub(c.samples * 2); _inflight = true; }
@@ -66,15 +76,31 @@ void Speaker::playback() {
         for (size_t offset = 0; valid && offset < c.samples;) {
             xSemaphoreTake(_mutex, portMAX_DELAY);
             if (c.generation != _generation.load()) { xSemaphoreGive(_mutex); break; }
-            size_t n = min((size_t)64, (size_t)c.samples - offset);
+            size_t n = min(WRITE_SAMPLES, (size_t)c.samples - offset);
+            // Live reply levels vary. Follow the peak (instant attack, ~0.5 s
+            // release) and normalize toward TARGET_PEAK instead of a fixed boost,
+            // which clipped normal-level speech. Rising gain is gradual, so no ramp.
+            int32_t blockPeak = 0;
+            for (size_t i = 0; i < n; ++i) blockPeak = std::max(blockPeak, abs((int32_t)c.pcm[offset+i]));
+            _envelope = std::max(blockPeak, _envelope - _envelope / 32);
+            float gain = constrain((float)TARGET_PEAK / std::max(_envelope, (int32_t)1), 1.0f, MAX_GAIN);
             float volume = _volume.load();
-            for (size_t i = 0; i < n; ++i) stereo[2*i] = stereo[2*i+1] = (int16_t)(c.pcm[offset+i] * volume);
+            for (size_t i = 0; i < n; ++i) {
+                int32_t sample = constrain((int32_t)(c.pcm[offset+i] * gain), -32768, 32767);
+                stereo[2*i] = stereo[2*i+1] = (int16_t)(sample * volume);
+            }
             size_t written = 0;
-            esp_err_t result = i2s_write(I2S_NUM_0, stereo, n * 4, &written, pdMS_TO_TICKS(5));
+            esp_err_t result = i2s_write(I2S_NUM_0, stereo, n * 4, &written, pdMS_TO_TICKS(100));
             bool failed = result != ESP_OK || !written || (written % 4);
+            // Numeric evidence only, restricted to samples the driver accepted.
+            for (size_t i = 0; i < min(written / sizeof(int16_t), n * 2); ++i) {
+                int32_t sample = stereo[i];
+                uint32_t magnitude = sample < 0 ? -sample : sample;
+                if (magnitude > _pcmPeak.load()) _pcmPeak = magnitude;
+            }
             offset += written / 4; _writtenBytes.fetch_add(written / 2);
-            // DMA has 4*256 stereo frames, 64 ms at 16 kHz. Add 16 ms margin.
-            _drainUntil = millis() + 80;
+            // DMA has 8*256 stereo frames, 128 ms at 16 kHz. Add 22 ms margin.
+            _drainUntil = millis() + 150;
             xSemaphoreGive(_mutex);
             if (failed) { ++_faults; stop(); break; }
             taskYIELD();

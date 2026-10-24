@@ -33,16 +33,21 @@ streaming-microphone reference. No laptop bridge is used.
 
 The published SDK provides USB serial transport only. Native WiFi/WSS code is in
 [hardware/atech-voice](../hardware/atech-voice/README.md). Build and driver tests
-passed. The flashed toggle build boots and authenticates over WiFi/WSS, but
-disconnects before backend session readiness. GPT speech and Journal saving
-on the physical device remain blocked.
+passed. The flashed toggle build now reaches Azure GPT-Live `listening` through
+the temporary Mac backend after fixing a premature HTTP-header terminator.
+The actual speech attempt sent microphone PCM and received reply PCM, but the
+human heard no reply and the speaker reported write failures. A playback-timeout
+fix is under physical test. Audible reply and Journal saving remain unverified.
 [Current evidence](../hardware/atech-voice/VERIFICATION.md) separates these results.
-Use the verified single Vercel backend at `https://pink-hack.vercel.app`,
-existing Turso storage and Azure Live provider. App and device share one fixed
+The current device target is `https://timer-cab-continuously-ghz.trycloudflare.com`,
+a temporary tunnel to the existing backend on this Mac. It retains existing Turso
+storage and Azure Live. Vercel has not been retested with the firmware fix.
+App and device share one fixed
 server-owned demo user; no sign-in or account-session token is required. Device
 transport retains its private Bearer credential bound to `demo-user`. Provision it
-privately through `POST https://pink-hack.vercel.app/api/v1/device/provision {}`;
-no cookie or account token is needed. WSS is `wss://pink-hack.vercel.app/api/v1/device/audio`.
+privately through the current backend's `POST /api/v1/device/provision {}`;
+no cookie or account token is needed. The already provisioned NVS token is reused.
+WSS is `wss://timer-cab-continuously-ghz.trycloudflare.com/api/v1/device/audio`.
 Never print the returned device token or put it in a URL. Journal writes are direct user-requested
 creates/updates, without staged review/confirmation.
 
