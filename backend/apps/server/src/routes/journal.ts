@@ -7,9 +7,9 @@ import { DomainError, validate, pageCreateSchema, pagePatchSchema, pageArchiveSc
 type Env = { Variables: { userId: string } };
 async function body<T>(c: Context<Env>, schema: z.ZodType<T>, emptyAllowed = false): Promise<T> {
   const declared = Number(c.req.header("content-length"));
-  if (declared > 262144) throw new DomainError(422, "invalid_input", "JSON body exceeds 256 KiB.");
+  if (declared > 524288) throw new DomainError(422, "invalid_input", "JSON body exceeds 512 KiB.");
   const raw = await c.req.text();
-  if (Buffer.byteLength(raw, "utf8") > 262144) throw new DomainError(422, "invalid_input", "JSON body exceeds 256 KiB.");
+  if (Buffer.byteLength(raw, "utf8") > 524288) throw new DomainError(422, "invalid_input", "JSON body exceeds 512 KiB.");
   let input: unknown;
   try { input = emptyAllowed && !raw.trim() ? {} : JSON.parse(raw); } catch { throw new DomainError(422, "invalid_input", "A valid JSON body is required."); }
   return validate(schema, input);

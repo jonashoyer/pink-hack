@@ -26,7 +26,7 @@ Show unsaved/saving/saved/error states accurately. Preserve local drafts on fail
 
 Use generic pages with native BlockNote JSON instead of fixed personal/medical text/checklist sections. Use one Journal with generic properties and page content instead of compulsory observation and separate day-plan records. Preserve legacy storage for explicit migration/audit; new writes follow the generic contract.
 
-The existing Hono/Node, Better Auth, Drizzle SQLite/libSQL backend remains the shared storage/API owner. Lovable is the external frontend. The reusable Live client is available for adaptation into Lovable; the Azure application reasoning callback and real device integration still need implementation.
+The existing Hono/Node, Better Auth, Drizzle/libSQL backend remains the shared storage/API owner. Deployed records use the existing Turso database supplied through root `.env`; no database service/container is provisioned. Lovable is the external frontend. Follow current contracts and backend evidence for application reasoning and device integration status.
 
 ## Historical mockup
 

@@ -8,9 +8,11 @@ import { secureHeaders } from "hono/secure-headers";
 import { DomainError } from "./domain/errors";
 import { createJournalRoutes } from "./routes/journal";
 import { createVoiceRoutes, type VoiceConfig } from "./routes/voice";
+import { createAssistantRoutes } from "./routes/assistant";
+import { createDeviceRoutes } from "./routes/device";
 
 type Auth = ReturnType<typeof createAuth>;
-type AppConfig = VoiceConfig & { CORS_ORIGIN: string; CORS_ORIGINS?: string; BETTER_AUTH_URL: string };
+type AppConfig = VoiceConfig & { ANTHROPIC_API_KEY?: string; CORS_ORIGIN: string; CORS_ORIGINS?: string; BETTER_AUTH_URL: string };
 type Variables = { userId: string; requestId: string };
 
 export function createApp(db: Database, auth: Auth, config: AppConfig, providerFetch: typeof fetch = fetch) {
@@ -33,7 +35,7 @@ export function createApp(db: Database, auth: Auth, config: AppConfig, providerF
     allowHeaders: ["Content-Type", "Authorization"],
     exposeHeaders: ["set-auth-token", "X-Request-Id"],
   }));
-  app.use("/api/*", bodyLimit({ maxSize: 128 * 1024, onError: () => { throw new DomainError(413, "body_too_large", "Request exceeds 128 KB."); } }));
+  app.use("/api/*", bodyLimit({ maxSize: 512 * 1024, onError: () => { throw new DomainError(413, "body_too_large", "Request exceeds 512 KiB."); } }));
   // CORS governs response access, not permission to mutate records.
   app.use("/api/*", async (c, next) => {
     const origin = c.req.header("Origin");
@@ -53,6 +55,8 @@ export function createApp(db: Database, auth: Auth, config: AppConfig, providerF
   });
   app.route("/api/v1", createJournalRoutes(db));
   app.route("/api/v1", createVoiceRoutes(db, config, providerFetch));
+  app.route("/api/v1", createAssistantRoutes(db, config));
+  app.route("/api/v1", createDeviceRoutes(db));
   app.notFound((c) => c.json({ error: { code: "not_found", message: "Endpoint not found.", retryable: false }, request_id: c.get("requestId") }, 404));
   app.onError((error, c) => {
     if (error instanceof DomainError) {

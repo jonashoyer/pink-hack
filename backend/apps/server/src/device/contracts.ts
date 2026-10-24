@@ -27,14 +27,17 @@ export type DelegationContext = DeviceOwner & {
   transcripts: readonly DeviceTranscript[];
   signal: AbortSignal;
 };
-export type DelegationResult = { commentary?: string; thinking?: string };
+// reviewRevision is supplied by the application from the persisted draft, never
+// parsed from model commentary or a tool argument that asks to confirm itself.
+export type DelegationResult = { commentary?: string; thinking?: string; reviewRevision?: number };
 export type ConfirmationContext = DeviceOwner & {
   draftRevision: number;
   operationId: string;
   receipt: string;
   signal: AbortSignal;
 };
-export type DeviceCheckin = { id: string; source: string; device_id?: string | null; stage: string; draft_revision: number; saved_entry_id?: string | null };
+export type DeviceCheckin = { id: string; source: string; device_id?: string | null; stage: string; draft_revision: number; saved_entry_id?: string | null;
+  confirmation?: { operation_id: string; draft_revision: number } | null };
 
 // These are application adapters, not transport or provider selection settings.
 // The domain owner supplies trusted creation/loading with a verified device ID.

@@ -1,8 +1,8 @@
 import { randomUUID, createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { Database } from "@backend/db";
-import { contextPages, pages, journalEntries, checkinSessions, observations, dayPlans } from "@backend/db/schema/journal";
-import type { BlockContent, PageSection, LegacyJournalDraft, JournalDraft, JournalProperties, JsonValue, PlanItem } from "@backend/db/schema/journal";
+import { contextPages, pages, journalEntries, checkinSessions, observations, dayPlans, operationReceipts } from "@backend/db/schema/journal";
+import type { BlockContent, PageSection, LegacyJournalDraft, JournalDraft, JournalProperties, JsonValue, PlanItem, JournalEntryResult } from "@backend/db/schema/journal";
 import { journalDraftSchema, blockContentSchema, propertiesSchema } from "./contracts";
 import { DomainError } from "./errors";
 import { write, fingerprint } from "./store";
@@ -90,6 +90,23 @@ export async function migrateLegacyData(db: Database) {
       if (!journalDraftSchema.safeParse(draft).success) throw new DomainError(409, "legacy_conversion_invalid", "Legacy draft requires explicit review. No records were converted.");
       await tx.update(checkinSessions).set({ legacy_draft: checkin.draft, draft, draft_revision: checkin.draft_revision + 1, confirmation: null, confirmation_operation_id: null, stage: "draft" }).where(and(eq(checkinSessions.id, checkin.id), eq(checkinSessions.owner_id, checkin.owner_id)));
       counts.pending_drafts++;
+    }
+    // Give pre-upgrade saved confirmations a stable generic replay snapshot.
+    for (const checkin of await tx.select().from(checkinSessions)) {
+      if (checkin.stage !== "saved" || !checkin.saved_entry_id || !checkin.confirmation) continue;
+      const confirmation = checkin.confirmation;
+      const request = { kind: "checkin_commit", checkin_id: checkin.id, input: { confirmation_receipt: confirmation.receipt, operation_id: confirmation.operation_id } };
+      const hash = fingerprint(request);
+      const [existing] = await tx.select().from(operationReceipts).where(and(eq(operationReceipts.owner_id, checkin.owner_id), eq(operationReceipts.operation_id, confirmation.operation_id)));
+      if (existing) {
+        if (existing.request_hash !== hash) throw new DomainError(409, "legacy_operation_conflict", "Legacy save operation conflicts with an existing receipt. No records were converted.");
+        continue;
+      }
+      const [entry] = await tx.select().from(journalEntries).where(and(eq(journalEntries.id, checkin.saved_entry_id), eq(journalEntries.owner_id, checkin.owner_id)));
+      if (!entry || entry.content === null || entry.properties === null) throw new DomainError(409, "legacy_conversion_invalid", "Legacy saved check-in references an unavailable entry. No records were converted.");
+      const { note: _note, ...rest } = entry;
+      const result: JournalEntryResult = { ...rest, content: entry.content, properties: entry.properties };
+      await tx.insert(operationReceipts).values({ id: randomUUID(), owner_id: checkin.owner_id, operation_id: confirmation.operation_id, request_hash: hash, result, created_at: entry.created_at });
     }
     return counts;
   });

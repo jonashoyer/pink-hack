@@ -16,11 +16,15 @@ The sole [Lovable frontend worker](t3-thread://v1/thread:delegated-task:command%
 
 Preserve Better Auth, authenticated ownership, transaction rollback, revision conflicts, stable operation IDs, and the working Azure Live transport. Adapt storage and domain validation to generic pages and journal content/properties.
 
+Use the existing Turso database as the sole deployed store. The backend owner loads root `.env` `DATABASE_URL` and `DATABASE_API_KEY` into private runtime configuration, maps the key to libSQL authentication, applies required migrations, and verifies preserved data plus authenticated persistence. Do not provision a database service/container. Local SQLite tests remain isolated verification, not the deployed storage choice.
+
 Add generic page CRUD. Keep legacy context rows and migrate explicitly to the new pages table. Add native content/properties to journal records and preserve old notes/observations/plans for verified migration/audit. The active product API has no separate plan or observation resource.
 
 Keep existing check-in draft/confirm/commit state. Add a proposal for updating an owned saved entry, bound to its expected revision. Voice commit requires a client-minted confirmation receipt for that exact proposal; the agent cannot self-confirm. New check-ins edit saved entries rather than reopening terminal sessions.
 
 Completion evidence is new-schema tests for arbitrary titles/blocks/properties, reload, migration preservation, owner isolation, stale edits, duplicate operations, transaction rollback, confirmed create/update, and cancellation. Prior foundation tests do not prove these changes.
+
+Verify the same invariants against configured Turso where appropriate, including retrieval after restarting the app process. A separate coordinator-assigned cleanup worker removes only this project's obsolete non-Turso deployed database and preserves the app service, existing Turso database, and data. Do not overlap that cleanup with schema or service deployment work.
 
 ## 2. Prepare the remote editor and shared client
 
@@ -54,6 +58,8 @@ The root `.env` Azure startup/close probe passed. Do not repeat it without a cha
 
 The Atech owner confirms board, modules, ports, capture/playback formats, and authenticated device binding. Its latest instruction selects one deployed demo backend with the audio relay inside the service. The backend owner publishes a fixed HTTPS origin, WSS ingress, device message contract, and PCM format. The Atech prompt connects directly to that contract; there is no laptop bridge or environment/configuration selector.
 
+That deployed app/device-relay service connects to the existing Turso database. Its managed disk or container filesystem is not the primary database, and no database service/container is provisioned alongside it.
+
 Follow [the firmware guide](atech-firmware-guide.md) after its device owner reconciles the new deployment instruction. That owner is also preparing separate root prompts for local PCM record/playback and the fixed deployed connection. Older bridge setup instructions are historical until reconciled.
 
 The device/bridge uses the same context, proposal, confirmation, and commit services as the app. Verify ordered audio, bounded playback, interruption, reconnect, and genuine status indicators. A browser microphone test does not establish device audio.
@@ -70,4 +76,4 @@ Atech microphone input and speaker output remain required for the device outcome
 
 ## Current handoff
 
-Backend implementation of the generic contract and authorized single-service deployment are underway with the existing owner. The sole Lovable writer has the contracts and client-export strategy. Concrete remaining integration inputs are the fixed public HTTPS/WSS URLs, origin/auth configuration, application reasoning callback, generic-schema evidence, and actual device inventory/audio. No complete demo candidate is established.
+Backend implementation of the generic contract and authorized single app/device-relay service deployment are underway with the existing owner. Deployed storage is the existing Turso database supplied in root `.env`; its runtime mapping, migrations, and persistence evidence remain with that owner. The sole Lovable writer has the contracts and client-export strategy. The assigned cleanup worker owns only obsolete non-Turso database removal. Public app/device reachability, generic persistence, application reasoning, and actual hardware/audio require their own final evidence. No complete demo candidate is established.

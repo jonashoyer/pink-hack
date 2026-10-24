@@ -14,6 +14,8 @@ Build a simple Notion-style app with user-created pages and one fixed Journal da
 
 Storage belongs to our backend. There is no Notion integration. Lovable is the frontend; the existing Better-T-Stack Hono/Node backend owns authentication, storage, and the shared API for the app and Atech.
 
+The existing Turso database is the sole deployed storage. The backend loads `DATABASE_URL` and `DATABASE_API_KEY` from the root `.env` into private runtime configuration. Deployment provisions the app/device-relay service, without provisioning a database service or container.
+
 ## Product decisions
 
 | Decision | Status |
@@ -26,6 +28,7 @@ Storage belongs to our backend. There is no Notion integration. Lovable is the f
 | Voice agent handles most journal creation and changes after confirmation | Developer requirement; app also supports direct editing |
 | App and Atech use the same authenticated backend | Developer requirement |
 | One deployed demo backend owns the device audio relay | Latest Atech instruction; fixed HTTPS/WSS connection, no laptop bridge or environment selector |
+| Existing Turso database owns deployed persistence | Latest coordinator instruction; reuse root `.env` database settings, no new database deployment |
 | Azure `gpt-live-1` is the configured voice provider | Real root-`.env` startup and graceful-close probe passed |
 | Canonical Lovable testing project | `ee916e8c-7f2f-4989-9c6e-cedcff1793b5`, Jonas' workspace |
 
@@ -67,7 +70,7 @@ flowchart TD
 
 The backend owns authenticated destinations, record validation, revision checks, confirmation receipts, and idempotent writes. Its single deployed service also owns the Atech audio relay and fixed authenticated WSS ingress. The assistant requests application tools and reports their verified result. Page content supplies context, not permissions.
 
-The backend database is authoritative. New context pages have no kind enum. Journal entries store BlockNote content and properties directly. Existing legacy context, observation, and day-plan data remains available for explicit migration/audit; it is not an additional active product model.
+The existing Turso database is authoritative for deployed records, including authentication, pages, journal entries, check-ins, and device ownership. New context pages have no kind enum. Journal entries store BlockNote content and properties directly. Existing legacy context, observation, and day-plan data remains available for explicit migration/audit; it is not an additional active product model. Local SQLite test evidence does not establish Turso persistence; the backend owner must verify migrations, writes, and retrieval against the configured Turso database.
 
 ## Conversation and save flow
 
@@ -123,6 +126,6 @@ Example: a page asks to track sleep and nausea, and another describes what helps
 
 The Azure access-only probe passed. Backend-mediated WebRTC, real audio, application reasoning/tools, generic persistence, Lovable integration, and Atech still need their own evidence.
 
-The backend currently runs locally at `http://localhost:3000`. Deployment of one demo service is authorized and underway with its owner. No verified public HTTPS API URL or device WSS contract has been supplied yet. The owner supplies one reachable origin, exact allowed frontend origin, fixed device messages and audio format, and authenticated demo-device binding. The canonical Lovable project is for testing; a submitted demo candidate has not been established.
+The backend currently runs locally at `http://localhost:3000`. Deployment of one app/device-relay service is authorized and underway with its owner, using the existing Turso database. The owner supplies one reachable origin, exact allowed frontend origin, fixed device messages and audio format, and authenticated demo-device binding. Turso runtime configuration and persistence verification remain that owner's work. Cleanup of only this project's obsolete non-Turso deployed database belongs to the coordinator's assigned cleanup worker, preserving the app service, Turso, and data. The canonical Lovable project is for testing; a submitted demo candidate has not been established.
 
 HealthKit imports, clinician access, clinical scoring, multi-database builders, and advanced editor collaboration need separate requirements. They are not acceptance criteria for this simple pages-and-Journal app.

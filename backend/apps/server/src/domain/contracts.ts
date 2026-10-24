@@ -58,6 +58,7 @@ export const pageArchiveSchema = z.object({ operation_id: operationIdSchema, exp
 export const pageQuerySchema = z.object({ cursor: z.string().max(1000).optional(), limit: z.coerce.number().int().min(1).max(100).default(30) }).strict();
 export const profilePatchSchema = z.object({ expected_revision: revision, timezone: z.string().min(1).max(100).refine((value) => { try { new Intl.DateTimeFormat("en", { timeZone: value }); return true; } catch { return false; } }, "Invalid timezone").optional(), allow_medical_voice_context: z.boolean().optional() }).strict().refine((v) => v.timezone !== undefined || v.allow_medical_voice_context !== undefined, "Supply a profile field");
 export const createCheckinSchema = z.object({ source: z.enum(["app", "atech"]), device_id: recordIdSchema.optional(), operation_id: operationIdSchema }).strict();
+export const deviceCheckinSchema = z.object({ operation_id: operationIdSchema }).strict();
 export const prepareDraftSchema = z.object({ expected_revision: revision, draft: journalDraftSchema }).strict();
 export const confirmSchema = z.object({ draft_revision: revision, action: z.literal("save"), operation_id: operationIdSchema }).strict();
 export const commitSchema = z.object({ confirmation_receipt: recordIdSchema, operation_id: operationIdSchema }).strict();

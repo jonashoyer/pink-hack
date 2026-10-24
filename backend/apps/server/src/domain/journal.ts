@@ -3,9 +3,10 @@ import { and, eq, desc, gte, lte, lt, or, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { Database } from "@backend/db";
 import { profiles, pages, checkinSessions, journalEntries, operationReceipts, observations, dayPlans } from "@backend/db/schema/journal";
+import { devices } from "@backend/db/schema/device";
 import type { JournalDraft, JournalEntryResult } from "@backend/db/schema/journal";
 import { DomainError } from "./errors";
-import { validate, createCheckinSchema, prepareDraftSchema, updateDraftSchema, confirmSchema, commitSchema, profilePatchSchema, pageCreateSchema, pagePatchSchema, pageArchiveSchema, pageQuerySchema, journalPatchSchema, journalQuerySchema, dateSchema, recordIdSchema } from "./contracts";
+import { validate, createCheckinSchema, deviceCheckinSchema, prepareDraftSchema, updateDraftSchema, confirmSchema, commitSchema, profilePatchSchema, pageCreateSchema, pagePatchSchema, pageArchiveSchema, pageQuerySchema, journalPatchSchema, journalQuerySchema, dateSchema, recordIdSchema } from "./contracts";
 import type { CreateCheckinInput, DraftInput, JournalUpdateInput, JournalPatchInput, ConfirmInput, CommitInput } from "./contracts";
 import { write, missing, conflict, now, fingerprint } from "./store";
 import type { Store } from "./store";
@@ -157,6 +158,25 @@ export async function createCheckin(db: Database, ownerId: string, input: Create
     const context = await readContext(tx, ownerId);
     const timestamp = now();
     const [created] = await tx.insert(checkinSessions).values({ id: id(), owner_id: ownerId, source: "app", operation_id: data.operation_id, stage: "created", journal_date: journalDate(context.profile.timezone, new Date(timestamp)), context_revisions: Object.fromEntries(context.pages.map((p) => [p.id, p.revision])), created_at: timestamp, updated_at: timestamp }).returning();
+    return recordOperation(tx, ownerId, data.operation_id, request, publicCheckin(created!));
+  });
+}
+// Called only after the device transport authenticates its current credential.
+// Presence of this owned singleton means it is currently provisioned; credential
+// rotation revokes old transports in the device runtime.
+export async function createDeviceCheckin(db: Database, ownerId: string, deviceId: string, input: z.infer<typeof deviceCheckinSchema>) {
+  validate(recordIdSchema, deviceId);
+  const data = validate(deviceCheckinSchema, input);
+  const request = { kind: "device_checkin_create", device_id: deviceId, input: data };
+  return write(db, async (tx) => {
+    const [device] = await tx.select({ id: devices.id }).from(devices).where(and(eq(devices.id, deviceId), eq(devices.owner_id, ownerId)));
+    if (!device) throw new DomainError(403, "device_access_denied", "The device is not currently provisioned to this owner.");
+    const replay = await lookupOperation<Checkin>(tx, ownerId, data.operation_id, request);
+    if (replay) return replay;
+    await assertAvailableOperation(tx, ownerId, data.operation_id);
+    const context = await readContext(tx, ownerId);
+    const timestamp = now();
+    const [created] = await tx.insert(checkinSessions).values({ id: id(), owner_id: ownerId, device_id: deviceId, source: "atech", operation_id: data.operation_id, stage: "created", journal_date: journalDate(context.profile.timezone, new Date(timestamp)), context_revisions: Object.fromEntries(context.pages.map((p) => [p.id, p.revision])), created_at: timestamp, updated_at: timestamp }).returning();
     return recordOperation(tx, ownerId, data.operation_id, request, publicCheckin(created!));
   });
 }

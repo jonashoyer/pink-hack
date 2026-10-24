@@ -5,28 +5,24 @@ import { and, eq, gte } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { DomainError } from "../domain/errors";
-import { getVoiceContext, prepareDraft, prepareDraftSchema, recordIdSchema, validate } from "../domain/journal";
+import { getVoiceContext, recordIdSchema, validate } from "../domain/journal";
+import { dispatchJournalTool, journalToolDefinitions } from "../voice/tools";
 import { buildBackendInstructions, conversationInstructions } from "../voice/prompts";
 import { plausibleLiveSdp, readLiveAnswer, voiceProvider } from "../voice/provider";
 import type { VoiceConfig } from "../voice/provider";
 export type { VoiceConfig } from "../voice/provider";
 
-const emptyArguments = z.object({}).strict();
 const sessionInput = z.object({
   checkin_id: recordIdSchema,
   operation_id: recordIdSchema,
   transport: z.object({ type: z.literal("webrtc"), sdp: z.string().refine(plausibleLiveSdp, "An audio and event-channel SDP offer is required") }).strict(),
 }).strict();
-const toolInput = z.object({ call_id: recordIdSchema, name: z.enum(["get_context", "get_checkin", "prepare_journal_draft"]), arguments: z.unknown() }).strict();
+const toolInput = z.object({ call_id: recordIdSchema, name: z.string().min(1).max(80), arguments: z.unknown() }).strict();
 async function jsonBody(request: Request) {
   try { return await request.json(); }
   catch { throw new DomainError(422, "invalid_json", "A valid JSON body is required."); }
 }
-export const voiceTools = [
-  { type: "function", name: "get_context", description: "Read the current personal context, permitted medical context and recent journal entries.", parameters: z.toJSONSchema(emptyArguments, { io: "input" }), strict: false },
-  { type: "function", name: "get_checkin", description: "Read this check-in's current workflow stage and draft revision.", parameters: z.toJSONSchema(emptyArguments, { io: "input" }), strict: false },
-  { type: "function", name: "prepare_journal_draft", description: "Prepare or revise a journal draft for user review in the app. This does not confirm or save a journal entry.", parameters: z.toJSONSchema(prepareDraftSchema, { io: "input" }), strict: false },
-];
+export const voiceTools = journalToolDefinitions.map((definition) => ({ type: "function", ...definition, strict: false }));
 
 export function createVoiceRoutes(db: Database, config: VoiceConfig, providerFetch: typeof fetch = fetch) {
   const routes = new Hono<{ Variables: { userId: string } }>();
@@ -73,10 +69,8 @@ export function createVoiceRoutes(db: Database, config: VoiceConfig, providerFet
     const ownerId = c.get("userId");
     const [voice] = await db.select().from(voiceSessions).where(and(eq(voiceSessions.id, c.req.param("id")), eq(voiceSessions.ownerId, ownerId), eq(voiceSessions.state, "active")));
     if (!voice) throw new DomainError(404, "not_found", "Voice session was not found.");
-    const context = await getVoiceContext(db, ownerId, voice.checkinId);
-    if (input.name !== "prepare_journal_draft") {
-      validate(emptyArguments, input.arguments);
-      return c.json({ call_id: input.call_id, output: input.name === "get_context" ? context : context.checkin });
+    if (!["prepare_journal_draft", "prepare_journal_update", "commit_journal_entry", "cancel_checkin"].includes(input.name)) {
+      return c.json({ call_id: input.call_id, output: await dispatchJournalTool(db, ownerId, voice.checkinId, input.name, input.arguments) });
     }
     const argumentsHash = createHash("sha256").update(JSON.stringify(input.arguments)).digest("hex");
     const [cached] = await db.select().from(voiceToolCalls).where(and(eq(voiceToolCalls.voiceSessionId, voice.id), eq(voiceToolCalls.callId, input.call_id)));
@@ -84,8 +78,7 @@ export function createVoiceRoutes(db: Database, config: VoiceConfig, providerFet
       if (cached.name !== input.name || cached.argumentsHash !== argumentsHash) throw new DomainError(409, "tool_call_conflict", "Tool call ID was reused with different arguments.");
       return c.json({ call_id: input.call_id, output: cached.result });
     }
-    const draft = await prepareDraft(db, ownerId, voice.checkinId, validate(prepareDraftSchema, input.arguments));
-    const result = { status: "draft_prepared", checkin_id: draft.id, draft_revision: draft.draft_revision, saved: false };
+    const result = await dispatchJournalTool(db, ownerId, voice.checkinId, input.name, input.arguments);
     await db.insert(voiceToolCalls).values({ id: randomUUID(), voiceSessionId: voice.id, callId: input.call_id, name: input.name, argumentsHash, result }).onConflictDoNothing();
     return c.json({ call_id: input.call_id, output: result });
   });

@@ -14,7 +14,7 @@ Collected on 2026-10-24 from the live Notion pages, the public check-in form, pr
 | Team members, first names | Jonas, Klara, Chloé | Explicitly listed in Notion Event context. |
 | Problem, one line | Women living with the lasting effects of breast cancer treatment need support managing fatigue, symptoms, and everyday life between appointments. | Draft wording based on the Notion research and product brief. |
 | Solution, one line | A voice companion with a Lovable app and Atech interface for personalized check-ins, journaling, and manageable day plans. | Draft wording for the intended demo. The integrated app and Atech workflow has not been verified. |
-| Demo link, Lovable preview or published URL | **To be selected** | The current integration-testing preview is listed below. It is not an established submission destination. |
+| Demo link, Lovable preview or published URL | **Coming later** | The developer will supply the demo link later. The integration-testing preview below remains a reference, not a selected submission destination. |
 | Did you use Atech in your project? | Yes | The team's explicit selection in Notion. Working device audio remains unverified in project status. |
 | Is your solution breast cancer or cancer related? | Yes | Explicit selection in Notion, consistent with the product and research. |
 

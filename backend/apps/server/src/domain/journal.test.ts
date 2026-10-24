@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createDb } from "@backend/db";
+import { devices } from "@backend/db/schema/device";
 import { user } from "@backend/db/schema/auth";
 import * as tables from "@backend/db/schema/journal";
 import { getTableConfig, SQLiteDialect } from "drizzle-orm/sqlite-core";
@@ -12,7 +13,7 @@ import { sql, is, SQL, eq } from "drizzle-orm";
 import type { Database } from "@backend/db";
 import { Hono } from "hono";
 import { createJournalRoutes } from "../routes/journal";
-import { DomainError, getContext, patchPage, patchProfile, createCheckin, getCheckin, prepareDraft, confirmDraft, commitCheckin, cancelCheckin, getJournalEntry, listJournal, getVoiceContext, journalDate, journalDraftSchema, blockContentSchema, propertiesSchema, createPage, getPage, listPages, archivePage, patchJournalEntry, prepareJournalUpdate, migrateLegacyData, normalizeLegacyDraft, blocksToText } from "./journal";
+import { DomainError, getContext, patchPage, patchProfile, createCheckin, getCheckin, prepareDraft, confirmDraft, commitCheckin, cancelCheckin, getJournalEntry, listJournal, getVoiceContext, journalDate, journalDraftSchema, blockContentSchema, propertiesSchema, createPage, getPage, listPages, archivePage, patchJournalEntry, prepareJournalUpdate, migrateLegacyData, createDeviceCheckin, normalizeLegacyDraft, blocksToText } from "./journal";
 
 // Test-only DDL derives from actual table definitions, without migrations or
 // touching the application database. All stored content is synthetic.
@@ -23,7 +24,7 @@ async function setup() {
   const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
   const render = (value: SQL) => dialect.sqlToQuery(value).sql;
   await db.run(sql.raw("PRAGMA foreign_keys = ON"));
-  for (const table of [user, ...Object.values(tables)] as SQLiteTable[]) {
+  for (const table of [user, devices, ...Object.values(tables)] as SQLiteTable[]) {
     const config = getTableConfig(table);
     const columns = config.columns.map((col) => {
       let out = `${quote(col.name)} ${col.getSQLType()}${col.primary ? " PRIMARY KEY" : ""}${col.notNull ? " NOT NULL" : ""}${col.isUnique ? " UNIQUE" : ""}`;
@@ -240,7 +241,7 @@ test("legacy migration is atomic and idempotent; preserves records, original tex
     const timestamp = "2026-10-24T00:00:00Z";
     const legacyDraft: tables.LegacyJournalDraft = { title: "Legacy", original_text: "Unmodified original", note: "Legacy note", observations: [{ metric: "energy", value: "low" }, { metric: "sleep_hours", value: 6 }], proposed_plan: { items: [{ id: "item", text: "Rest", state: "deferred" }] } };
     await db.insert(tables.contextPages).values({ id: "legacy-page", owner_id: "alice", kind: "medical_needs", title: "Legacy custom title", sections: [{ id: "section", title: "Question", type: "checklist", items: [{ id: "question", text: "Synthetic question", checked: true }] }], revision: 4, updated_at: timestamp });
-    await db.insert(tables.checkinSessions).values({ id: "legacy-saved", owner_id: "alice", source: "app", operation_id: "legacy-capture", stage: "saved", journal_date: "2026-10-24", draft: legacyDraft, draft_revision: 1, context_revisions: { "legacy-page": 4 }, saved_entry_id: "legacy-entry", created_at: timestamp, updated_at: timestamp });
+    await db.insert(tables.checkinSessions).values({ id: "legacy-saved", owner_id: "alice", source: "app", operation_id: "legacy-capture", stage: "saved", journal_date: "2026-10-24", draft: legacyDraft, draft_revision: 1, context_revisions: { "legacy-page": 4 }, saved_entry_id: "legacy-entry", confirmation: { receipt: "legacy-receipt", operation_id: "legacy-save", draft_revision: 1, plan_state: "accepted" }, confirmation_operation_id: "legacy-save", created_at: timestamp, updated_at: timestamp });
     await db.insert(tables.checkinSessions).values({ id: "legacy-pending", owner_id: "alice", source: "app", operation_id: "legacy-pending-capture", stage: "awaiting_confirmation", journal_date: "2026-10-24", draft: legacyDraft, draft_revision: 2, context_revisions: {}, confirmation: { receipt: "old-receipt", operation_id: "old-save", draft_revision: 2, plan_state: "accepted" }, confirmation_operation_id: "old-save", created_at: timestamp, updated_at: timestamp });
     await db.insert(tables.journalEntries).values({ id: "legacy-entry", owner_id: "alice", journal_date: "2026-10-24", title: "Legacy", original_text: legacyDraft.original_text, note: legacyDraft.note, source: "app", session_id: "legacy-saved", operation_id: "legacy-save", context_revisions: { "legacy-page": 4 }, created_at: timestamp, updated_at: timestamp });
     await db.insert(tables.observations).values({ id: "legacy-observation", owner_id: "alice", entry_id: "legacy-entry", metric: "energy", value: "low", observed_at: timestamp, confirmation_state: "confirmed", source_reference: "legacy-entry" });
@@ -254,6 +255,8 @@ test("legacy migration is atomic and idempotent; preserves records, original tex
     assert.equal(entry.properties.energy, "low");
     assert.equal(entry.original_text, "Unmodified original");
     assert.match(blocksToText(entry.content), /Day plan/);
+    await patchJournalEntry(db, "alice", entry.id, { expected_revision: 1, operation_id: "legacy-entry-edit", title: "Later legacy correction" });
+    assert.deepEqual(await commitCheckin(db, "alice", "legacy-saved", { confirmation_receipt: "legacy-receipt", operation_id: "legacy-save" }), entry);
     const migrated = (await getContext(db, "alice")).pages[0]!;
     assert.equal(migrated.title, "Legacy custom title");
     assert.equal(migrated.content[1]!.props!.checked, true);
@@ -297,5 +300,67 @@ test("validators bound recursive rich JSON and properties; API rejects malformed
     assert.equal((await anonymous.request("/context")).status, 401);
     await patchProfile(db, "alice", { expected_revision: 0, timezone: "Pacific/Kiritimati" });
     assert.equal(journalDate("Pacific/Kiritimati", new Date("2026-10-24T23:00:00Z")), "2026-10-25");
+  } finally { await close(); }
+});
+
+test("verified owned device check-ins persist genuine Atech source; app payloads cannot spoof it", async () => {
+  const { db, close } = await setup();
+  try {
+    await assert.rejects(createDeviceCheckin(db, "alice", "demo", { operation_id: "device-capture" }), rejects("device_access_denied"));
+    await db.insert(devices).values({ id: "demo", owner_id: "alice", token_hash: "synthetic-hash", created_at: "2026-10-24T00:00:00Z", updated_at: "2026-10-24T00:00:00Z" });
+    await assert.rejects(createDeviceCheckin(db, "bob", "demo", { operation_id: "device-capture" }), rejects("device_access_denied"));
+    const checkin = await createDeviceCheckin(db, "alice", "demo", { operation_id: "device-capture" });
+    assert.equal(checkin.source, "atech");
+    assert.equal(checkin.device_id, "demo");
+    assert.deepEqual(await createDeviceCheckin(db, "alice", "demo", { operation_id: "device-capture" }), checkin);
+    await prepareDraft(db, "alice", checkin.id, { expected_revision: 0, draft });
+    const entry = await commit(db, checkin.id, await confirm(db, checkin.id, "device-save"));
+    assert.equal(entry.source, "atech");
+    await assert.rejects(createCheckin(db, "alice", { source: "atech", operation_id: "spoofed" }), rejects("device_not_supported"));
+  } finally { await close(); }
+});
+
+test("operation IDs cannot cross action types or change a committed receipt payload", async () => {
+  const { db, close } = await setup();
+  try {
+    const page = await createPage(db, "alice", { title: "Synthetic", content: [], operation_id: "global-operation" });
+    await assert.rejects(createCheckin(db, "alice", { source: "app", operation_id: "global-operation" }), rejects("operation_conflict"));
+    await assert.rejects(archivePage(db, "alice", page.id, { expected_revision: 1, operation_id: "global-operation" }), rejects("operation_conflict"));
+    const checkin = await pending(db, "global-conflict");
+    await assert.rejects(confirm(db, checkin.id, "global-operation"), rejects("operation_conflict"));
+    const receipt = await confirm(db, checkin.id, "global-save");
+    await commit(db, checkin.id, receipt);
+    await assert.rejects(commitCheckin(db, "alice", checkin.id, { confirmation_receipt: "changed-receipt", operation_id: "global-save" }), rejects("operation_conflict"));
+  } finally { await close(); }
+});
+
+test("failed legacy conversion rolls back earlier conversions without altering legacy rows", async () => {
+  const { db, close } = await setup();
+  try {
+    const timestamp = "2026-10-24T00:00:00Z";
+    for (const [index, kind] of ["personal_needs", "medical_needs"].entries()) await db.insert(tables.contextPages).values({ id: `legacy-${index}`, owner_id: "alice", kind: kind as "personal_needs" | "medical_needs", title: `Legacy ${index}`, sections: [], updated_at: timestamp });
+    await db.run(sql.raw("CREATE TRIGGER synthetic_conversion_failure BEFORE INSERT ON pages WHEN NEW.legacy_page_id = 'legacy-1' BEGIN SELECT RAISE(ABORT, 'synthetic conversion failure'); END"));
+    await assert.rejects(migrateLegacyData(db), rejects("storage_unavailable"));
+    assert.equal((await db.select().from(tables.pages)).length, 0);
+    assert.equal((await db.select().from(tables.contextPages)).length, 2);
+    await db.run(sql.raw("DROP TRIGGER synthetic_conversion_failure"));
+    assert.equal((await migrateLegacyData(db)).pages, 2);
+  } finally { await close(); }
+});
+
+test("standalone route accepts a valid draft above 256 KiB within the shared 512 KiB limit", async () => {
+  const { db, close } = await setup();
+  try {
+    const checkin = await createCheckin(db, "alice", { source: "app", operation_id: "large-capture" });
+    const largeDraft = { ...draft, original_text: "界".repeat(30000), content: Array.from({ length: 6 }, (_, i) => ({ id: `large-${i}`, type: "paragraph", content: "x".repeat(29000) })), properties: Object.fromEntries(Array.from({ length: 4 }, (_, i) => [`prop-${i}`, "x".repeat(10000)])) };
+    const body = JSON.stringify({ expected_revision: 0, draft: largeDraft });
+    assert.ok(Buffer.byteLength(body) > 262144 && Buffer.byteLength(body) < 524288);
+    const app = new Hono<{ Variables: { userId: string } }>();
+    app.use("*", async (c, next) => { c.set("userId", "alice"); await next(); });
+    app.route("/api/v1", createJournalRoutes(db));
+    app.onError((error, c) => c.json({ code: error instanceof DomainError ? error.code : "unexpected" }, error instanceof DomainError ? error.status as 400 : 500));
+    const response = await app.request(`/api/v1/checkins/${checkin.id}/draft`, { method: "PUT", headers: { "Content-Type": "application/json" }, body });
+    assert.equal(response.status, 200);
+    assert.equal((await getCheckin(db, "alice", checkin.id)).draft!.original_text, largeDraft.original_text);
   } finally { await close(); }
 });

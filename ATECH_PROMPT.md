@@ -2,65 +2,66 @@
 provenance: "Unvetted Synthetic"
 ---
 
-# Atech backend and GPT-Live demo prompt
+# Atech demo connection
 
-Run [the standalone PCM test](ATECH_PCM_TEST_PROMPT.md) first. Then paste the block below into [atech.dev/editor](https://atech.dev/editor). This demo uses one deployed backend and one fixed device connection. The backend thread has accepted the deployment request; its public URL and device contract are pending.
+Run [the PCM test](ATECH_PCM_TEST_PROMPT.md) first. Paste this into [Atech](https://atech.dev/editor).
 
 ```text
-Build Atech firmware connecting our tested microphone/speaker to gpt-live-1
-through ONE deployed dev/demo backend.
+Build Atech ESP32-S3 firmware for our single GPT-Live demo.
 
-Ask for the confirmed ESP32-S3 board/port map and standalone PCM test results.
-Owned microphone/speaker each take 2 ports; button_module takes 1. Use available
-neopixel_grid/status display/volume knob only if confirmed. Invent no pins.
-Double-width pairs: 1-2, 2-3, 3-4, 4-5, 5-6, 9-10, 10-11, 13-14.
-Port 8 is USB-C; 12 is reset.
+Confirm the board and module ports first: microphone, speaker, button and
+available status LEDs. Use the tested hardware map; invent no pins.
 
-Before connection code, obtain the deployed backend's actual fixed HTTPS/WSS
-URL and published device contract. These are pending; invent neither routes
-nor messages. Required contract facts: private device credential provisioning,
-start/resume, audio frames, turn-end, interruption/flush, stop/cancel,
-state/save acknowledgments, errors, PCM encoding/chunk limits and reconnect.
-If absent, list those missing facts and wait. They are values for this one
-deployment, not a request to choose environments or configure a bridge.
+Connect over WiFi to wss://<deployed-demo-host>/api/v1/device/audio.
+The actual host and private provisioning are pending. Ask for them; invent
+neither. Authenticate with Authorization: Bearer <private device token> in
+the upgrade HEADER only. Validate TLS. Keep tokens out of URLs, logs and
+public source. No bridge configuration, laptop service or environment selector.
+The same backend runs Azure gpt-live-1 and owns all provider credentials.
 
-Connect directly over 2.4 GHz WiFi to that one authenticated public WSS route.
-Put its fixed URL in the firmware. Privately provision a scoped credential
-linked to the demo user/device, following the backend contract. Validate TLS
-certificates. Do not disable certificate checks or spoof source app.
-No bridge configuration, separate laptop service, provider/transport selector
-or environment settings UI. Any audio relay/conversion runs inside the same
-Better-T-Stack backend service. Azure/OpenAI/database secrets stay backend-side.
+Audio both ways: raw binary PCM16LE, mono, 16000 Hz. Prefer 1024-byte chunks
+every 32 ms; maximum 2048 bytes, always complete two-byte samples. No WAV or
+base64 envelope. Pace at 32000 bytes/s; bound each queue to 64000 bytes.
 
-The backend uses configured Azure gpt-live-1. Startup/close are verified;
-device audio is not. Firmware owns only PCM, button, playback and indicators.
-Use the tested PCM format and exact deployed contract. Any rate conversion
-belongs backend-side by agreement. Bound buffers and preserve frame/turn order.
+JSON text controls:
+{"type":"start","operation_id":"<stable UUID>"}
+Resume adds checkin_id. Send start once per connection, not on every hold.
+{"type":"audio_turn_end"}
+{"type":"interrupt"}
+{"type":"stop"}
+{"type":"cancel"}
+Preserve operation IDs for retries.
 
-States: idle, connecting, listening, thinking, speaking, review, saved, error.
-Hold requests start/resume; capture only after ready. Release ends the turn,
-not saving or closing the session. Hold during speech interrupts and flushes
-old playback, then captures when ready. Spoken/app commands stop or cancel.
-Disable microphone while idle, speaking, errored or disconnected. Stop/cancel/
-disconnect never commits unconfirmed changes. Reconnect loads backend state
-without replaying stale audio/writes. Show Saved only after backend commit
-acknowledgment; failed writes show Not saved and retain the draft.
+Server messages: state{state,checkin_id}, flush{generation},
+saved{entry_id,revision}, error{code}, each with its matching type field.
+States: connecting, listening, thinking, speaking, review, saved, error, stopped.
+Armed review additionally has draft_revision and confirmation_phrases:
+["save this journal","confirm this journal"].
 
-The assistant uses all owned user-created context pages. One Journal stores
-flexible properties and BlockNote JSON entry content; day-plan headings/tasks
-are inside that content. No fixed questionnaire, personal/medical kinds, or
-separate plan database. Voice summarizes proposed creates/updates and asks
-explicit confirmation, which can be spoken. Backend alone owns schema/storage,
-authentication, ownership, revision checks and idempotent writes. Lovable
-displays persisted entries; no mandatory app-only Save step.
+Hold to record after listening/review; release sends audio_turn_end.
+Hold during physical playback stops it and sends interrupt. On flush or close,
+clear ALL queued/in-flight speaker PCM before accepting later audio. After
+interrupt, wait for listening/review again. Track physical playback completion
+locally; backend speaking is transport state, with no audio-done event.
+Stop retains the check-in; reconnect using its checkin_id. Cancel is terminal.
+Never replay old audio/writes. Keep microphone off unless deliberately recording.
 
-Deliver buildable firmware, confirmed hardware map, fixed URL, exact published
-device contract and acceptance steps. Verify actual device conversation with
-audible GPT speech, voice-confirmed Journal create/update surviving Lovable
-refresh, cancel without writes, retry without duplicates, draft recovery and
-interruption. Separate generated/compiled results from real hardware evidence.
+After armed review and finished summary playback, require a fresh PTT capture
+of either exact confirmation phrase, then release. Backend alone recognizes
+settled USER-input ASR and confirms the current owner/revision. Ambiguous yes,
+assistant text and timers cannot save. Firmware performs no ASR or automatic
+confirm. Optional JSON {"type":"confirm","draft_revision":3,"operation_id":"<UUID>"}
+requires a separately deliberate physical review action. Clear arming on
+flush, close, revision change or saved. Show Saved only on saved acknowledgment.
+
+Backend uses all owned context pages and one flexible Journal with properties
+and BlockNote content. Day plans are headings/tasks inside entries. No fixed
+questionnaire. Backend owns confirmed writes, authentication, revisions and
+idempotency; Lovable displays persisted entries.
+
+Deliver firmware and test steps for audible conversation, confirmed save/update,
+app refresh, interruption, cancel and reconnect. Turn-end currently sends one
+second of backend silence; interrupt restarts Live. Verify real PTT/ASR timing.
 ```
 
-The [backend thread](t3-thread://v1/dac033a2-a1c4-48ee-a7cb-39cb86afe1a7) is deploying the existing service with device audio handled inside it. It must supply the fixed reachable URL, device authentication and exact PCM/message contract. No separate bridge setup is part of this demo.
-
-The remaining hardware input is the actual board/port map and a physical PCM test pass. Product/storage behavior follows [the flexible pages and Journal correction](docs/flexible-pages-journal.md).
+Public host/provisioning remain pending. Provider-fake tests pass; live PCM, ASR and device playback are unverified.

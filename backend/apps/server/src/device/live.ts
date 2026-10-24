@@ -30,7 +30,7 @@ export class DeviceLiveSession {
       timer.unref();
       this.onStarted = () => { clearTimeout(timer); resolve(); };
       this.onFailed = (error) => { clearTimeout(timer); reject(error); };
-      this.socket = this.factory(url.toString(), { headers: provider.headers, followRedirects: false, maxPayload: 262144, handshakeTimeout: 15000 });
+      this.socket = this.factory(url.toString(), { headers: { "api-key": provider.key }, followRedirects: false, maxPayload: 262144, handshakeTimeout: 15000 });
       this.socket.on("open", () => {
         if (this.closing) { this.socket?.close(); return; }
         this.send({ type: "session.start", session: { model: provider.model, instructions: this.config.instructions,

@@ -12,9 +12,13 @@ The existing backend thread owns source, dependencies, migrations, application r
 
 Keep Hono/Node, Better Auth, Drizzle SQLite/libSQL, and the existing transaction/revision/idempotency checks. Lovable is the external frontend, not another storage backend.
 
+The existing Turso database is the sole deployed store. Local SQLite remains useful for isolated development tests; deployed authentication and product records use the configured Turso database. The backend owner loads root `.env` `DATABASE_URL` and `DATABASE_API_KEY` privately and maps the latter to the libSQL driver's `authToken`, or the runtime's `DATABASE_AUTH_TOKEN` field as required. Root-file values must explicitly reach the server's environment configuration; loading an unrelated app `.env` is insufficient. Validate token mapping with actual Turso access rather than assuming a successful local test proves it. No credential or database URL belongs in frontend code or logs.
+
 The known local API is `http://localhost:3000`. A verified public HTTPS API URL has not been supplied. The developer authorized one deployed demo service; the backend owner is preparing it and must provide one fixed reachable URL and the exact actual frontend origin. CORS and origin checks do not replace authentication.
 
 The same service hosts the device audio relay and one authenticated WSS ingress. The owner publishes the fixed device JSON/binary contract and PCM rate/encoding/chunk limits. No laptop bridge, bridge configuration product, or environment selector is part of this demo. Actual authenticated device binding and bidirectional audio remain unverified.
+
+Deployment creates only the app/device-relay service. It does not provision a database service/container or use that service's filesystem as primary persistence. The assigned cleanup worker owns removal of this project's obsolete non-Turso deployed database only; backend migration and configuration stay with the backend owner.
 
 ## Minimal frontend
 
@@ -53,6 +57,8 @@ Dates and owner IDs remain server-controlled metadata. The server captures journ
 ## Storage change
 
 Add a generic `pages` table while preserving legacy `context_pages` for migration. Add native `content` and `properties` fields to `journal_entries`. Keep legacy note/observation/day-plan data for explicit migration/audit until the backend owner verifies preservation. The active API reads and writes the generic model.
+
+Apply and verify the required schema against the existing Turso database through its owner. Preserve existing Turso contents and validate authentication, confirmed create/update, idempotency, and retrieval after app-process restart. Existing local migration tests are separate evidence. Do not infer that obsolete deployed database cleanup authorizes deletion or replacement of Turso data.
 
 Day plans do not create a new table, separate API resource, or acceptance state. Existing plan/checklist text can be migrated into entry blocks without inventing facts or changing metric meaning. Migration records must identify source data and be verified before legacy cleanup. No permanent dual-write product model is required.
 
