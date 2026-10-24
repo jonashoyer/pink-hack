@@ -1,0 +1,5 @@
+{
+  "extends": "@backend/config/tsconfig.base.json",
+  "compilerOptions": { "noEmit": true, "lib": ["ESNext", "DOM", "DOM.Iterable"] },
+  "include": ["src"]
+}

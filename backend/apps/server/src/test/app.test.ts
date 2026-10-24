@@ -24,10 +24,14 @@ test("authenticated journal workflow persists, isolates owners and negotiates Li
     }
     let requestCount = 0;
     let sentConfig: any;
-    const provider = (async (_url, init) => {
+    let sentUrl: string | undefined;
+    let sentHeaders: Headers | undefined;
+    const provider = (async (url, init) => {
       requestCount++;
+      sentUrl = String(url);
+      sentHeaders = new Headers(init?.headers);
       sentConfig = JSON.parse(String(init?.body));
-      return new Response(JSON.stringify({ session: { id: "live_synthetic" }, transport: { type: "webrtc", sdp: "synthetic-sdp-answer" } }), { status: 201 });
+      return new Response(JSON.stringify({ session: { id: "live_synthetic" }, transport: { type: "webrtc", sdp: "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n" } }), { status: 201 });
     }) as typeof fetch;
     let app = createApp(db, createAuth(config, db), config, provider);
     const request = async (path: string, token?: string, method = "GET", body?: unknown, origin = config.CORS_ORIGIN) => {
@@ -60,25 +64,38 @@ test("authenticated journal workflow persists, isolates owners and negotiates Li
     assert.equal(checkin.status, 200);
     const checkinId = checkin.body.id;
     const unconfigured = createApp(db, createAuth(config, db), { ...config, OPENAI_API_KEY: undefined }, provider);
-    const disabledVoice = await unconfigured.request("http://localhost:3000/api/v1/voice/sessions", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ checkin_id: checkinId, operation_id: "not-configured", transport: { type: "webrtc", sdp: "v=0\r\nsynthetic-offer" } }) });
+    const offer = "v=0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\nm=application 9 UDP/DTLS/SCTP webrtc-datachannel\r\n";
+    const disabledVoice = await unconfigured.request("http://localhost:3000/api/v1/voice/sessions", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ checkin_id: checkinId, operation_id: "not-configured", transport: { type: "webrtc", sdp: offer } }) });
     assert.equal(disabledVoice.status, 503);
     assert.equal((await disabledVoice.json() as any).error.code, "voice_not_configured");
     assert.equal(requestCount, 0);
     const repeated = await request("/api/v1/checkins", token, "POST", { source: "app", operation_id: "capture-one" });
     assert.equal(repeated.body.id, checkinId);
     assert.equal((await request(`/api/v1/checkins/${checkinId}`, otherToken)).status, 404);
-    const live = await request("/api/v1/voice/sessions", token, "POST", { checkin_id: checkinId, operation_id: "live-one", transport: { type: "webrtc", sdp: "v=0\r\nsynthetic-offer" } });
+    const live = await request("/api/v1/voice/sessions", token, "POST", { checkin_id: checkinId, operation_id: "live-one", transport: { type: "webrtc", sdp: offer } });
     assert.equal(live.status, 201);
     assert.equal(live.body.session.id, "live_synthetic");
     assert.equal(requestCount, 1);
-    assert.equal(sentConfig.session.model, "gpt-live-1");
-    assert.equal(sentConfig.session.store, false);
-    assert.equal(sentConfig.transport.type, "webrtc");
-    assert.ok(!sentConfig.session.delegation.responses.instructions.includes("SYNTHETIC_MEDICAL_CONTEXT"));
-    assert.deepEqual(sentConfig.session.delegation.responses.tools.map((tool: any) => tool.name), ["get_context", "get_checkin", "prepare_journal_draft"]);
-    const voiceRetry = await request("/api/v1/voice/sessions", token, "POST", { checkin_id: checkinId, operation_id: "live-one", transport: { type: "webrtc", sdp: "v=0\r\nsynthetic-offer" } });
+    const openaiApp = app;
+    const openaiConfig = sentConfig;
+    app = createApp(db, createAuth(config, db), { ...config, AZURE_OPENAI_API_KEY: "synthetic-azure-key", AZURE_OPENAI_ENDPOINT: "https://synthetic-resource.services.ai.azure.com", AZURE_OPENAI_REALTIME_DEPLOYMENT: "gpt-live-1" }, provider);
+    const azureLive = await request("/api/v1/voice/sessions", token, "POST", { checkin_id: checkinId, operation_id: "azure-live-one", transport: { type: "webrtc", sdp: offer } });
+    assert.equal(azureLive.status, 201);
+    assert.equal(azureLive.body.provider, "azure");
+    assert.equal(azureLive.body.delegation, "client");
+    assert.equal(sentUrl, "https://synthetic-resource.services.ai.azure.com/openai/v1/live/sessions");
+    assert.equal(sentHeaders?.get("api-key"), "synthetic-azure-key");
+    assert.equal(sentHeaders?.get("Authorization"), null);
+    assert.deepEqual(sentConfig.session.delegation, { type: "client" });
+    app = openaiApp;
+    assert.equal(openaiConfig.session.model, "gpt-live-1");
+    assert.equal(openaiConfig.session.store, false);
+    assert.equal(openaiConfig.transport.type, "webrtc");
+    assert.ok(!openaiConfig.session.delegation.responses.instructions.includes("SYNTHETIC_MEDICAL_CONTEXT"));
+    assert.deepEqual(openaiConfig.session.delegation.responses.tools.map((tool: any) => tool.name), ["get_context", "get_checkin", "prepare_journal_draft"]);
+    const voiceRetry = await request("/api/v1/voice/sessions", token, "POST", { checkin_id: checkinId, operation_id: "live-one", transport: { type: "webrtc", sdp: offer } });
     assert.equal(voiceRetry.status, 409);
-    assert.equal(requestCount, 1);
+    assert.equal(requestCount, 2);
     const draft = { title: "Morning check-in", original_text: "I rate my energy two out of five and want to visit my sister.", note: "Reported energy 2 out of 5. Wants to visit sister.", observations: [{ metric: "energy", value: 2 }], proposed_plan: { items: [{ id: "visit", text: "Suggestion: a short visit with a rest afterward.", state: "active" }] } };
     const call = { call_id: "call-one", name: "prepare_journal_draft", arguments: { expected_revision: 0, draft } };
     const prepared = await request(`/api/v1/voice/sessions/${live.body.id}/tools`, token, "POST", call);

@@ -6,11 +6,41 @@ provenance: "Unvetted Synthetic"
 
 Research date: 2026-10-24. Workspace revision: `502e43af5377a6553ff17a365e73859abf7b316a`, with existing uncommitted documentation preserved. This worker owns API discovery only. The main thread owns the PRD, app architecture, status, and the storage decision.
 
-GPT-Live's API and event schemas are documented and available for implementation. Direct `gpt-live-1` project access, tool execution, and Atech device voice remain untested. No direct OpenAI project key was found. A subsequent developer-authorized test loaded the repository `.env` and reached Azure, which rejected the configured deployment with `OperationNotSupported` before a session started. These are separate providers and protocols.
+The configured Azure `gpt-live-1` access test passed using the repository root `.env`. A real primary Live WebSocket produced `session.started`, then `session.closed` after graceful shutdown. Audio, tool execution, journal integration, and Atech remain untested. The earlier Azure Realtime rejection was the wrong protocol for this deployment and is superseded as a GPT-Live blocker. A direct OpenAI project key is not required for this configured Azure path.
 
 The latest requirement is voice through Atech's microphone and speaker. A browser microphone test would not satisfy it. The earlier [platform context](gpt_live_atech_lovable_context.md) leaves voice location open; the current user brief resolves that requirement to Atech device voice. Whether a laptop or persistent server bridges the device remains an implementation decision.
 
-## Latest .env API probe
+## Corrected Azure GPT-Live access probe
+
+Tested on 2026-10-24 at approximately 12:39 Europe/Copenhagen. After the developer named `/Users/j/Documents/claude-impact-lab`, this thread inspected its [Azure Live adapter](/Users/j/Documents/claude-impact-lab/apps/web/src/lib/server/azure-live.ts) and [voice notes](/Users/j/Documents/claude-impact-lab/docs/voice.md). Those files implement and record a previously verified Azure Live SDP connection. No source files were copied by this PRD thread. The relevant adapter and client-protocol paths were handed to the backend owner for reuse with this app's authentication and journal contracts.
+
+Microsoft's [GPT-Live reference](https://learn.microsoft.com/en-us/azure/foundry/openai/gpt-live-reference) confirms that the primary WebSocket connects to `/openai/v1/live/sessions` and receives `session.start`. Its [WebRTC guide](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/gpt-live-webrtc) confirms the corresponding HTTP SDP exchange. GPT-Live uses Live session events, not Azure Realtime events or ephemeral client keys.
+
+The isolated test loaded the root `.env` directly, opened one Azure Live WebSocket with the configured resource key, and sent a client-delegation startup configuration. It immediately requested graceful closure after startup. No audio, model tool calls, or application writes were sent. Configured key, resource URL, deployment value, and session ID remained out of logs and documentation.
+
+```json
+{
+  "env_file": ".env",
+  "provider": "azure_gpt_live",
+  "protocol": "live_primary_websocket",
+  "connection_attempts": 1,
+  "confirmed_model": "gpt-live-1",
+  "session_started": true,
+  "session_closed": true,
+  "close_reason": "close_requested",
+  "websocket_close_code": 1000,
+  "usage_seconds": 0.0,
+  "elapsed_seconds": 1.49,
+  "audio_input_sent": false,
+  "tool_calls_executed": 0,
+  "application_writes": 0,
+  "outcome": "passed"
+}
+```
+
+The backend owner received this corrected result and the reference adapter paths. Remaining verification is backend-mediated WebRTC, real input/output audio, delegated reasoning and tools, persisted journal output, and Atech. Direct `api.openai.com` access was not tested and is unnecessary for this Azure connection.
+
+## Earlier .env Realtime probe, superseded as a Live blocker
 
 Tested on 2026-10-24 at approximately 12:35 Europe/Copenhagen. The developer explicitly requested `.env` for API testing. The backend owner acknowledged this thread's probe ownership and confirmed they were not running a duplicate authenticated probe.
 
@@ -37,7 +67,7 @@ Sanitized aggregate evidence:
 }
 ```
 
-This confirms rejection of the configured deployment for Azure's Realtime operation. It does not establish that the resource key is valid for another operation or that `gpt-live-1` is available. Azure credentials were not sent to `api.openai.com`. The backend owner received this result. Testing a supported Azure Realtime deployment and testing direct GPT-Live access are distinct next steps; neither provider choice was silently changed.
+This only confirms rejection of the configured deployment for Azure's Realtime operation. It was the wrong protocol for the requested GPT-Live model. The later Live probe above establishes successful access with the same root-file Azure settings. Azure credentials were not sent to `api.openai.com`. The backend owner received both the initial result and its correction.
 
 ## Initial credential and secure-test findings
 
@@ -65,9 +95,11 @@ Azure credentials do not establish authentication or GPT-Live access at `api.ope
 
 The exposed T3 `request_secret` tool returns a one-use `secretRef`, without returning the secret value. The only exposed consumers found were `schedule_task` and `update_scheduled_task`, for webhook signature configuration. Neither is an outbound HTTP API tester. No exposed HTTP test tool accepts a `secretRef`, and terminal commands cannot resolve one. No secret was requested, no scheduler task was created, and no substitute secret-resolution mechanism was invented.
 
-No probe was added under `scripts/`. The backend scaffold thread now owns runnable probes, local backend dependencies, and integration. Configure a direct project credential privately in that trusted runtime before the access probe runs. Public availability does not prove this project's permissions or quota.
+No probe was added under `scripts/`. The backend scaffold thread owns backend source, dependencies, and integration. This PRD thread ran the isolated developer-authorized access probe and owns its evidence. The root-file Azure settings are sufficient for the tested Live connection; backend loading and deployment configuration still need integration. Public availability alone does not establish permissions or quota.
 
-## Verified OpenAI documentation
+## Verified direct OpenAI documentation
+
+The sections below document the direct OpenAI API as an alternative provider. The configured and tested provider is Azure, using its resource authentication and `/openai/v1/live/sessions` path above.
 
 The OpenAI documentation tools were used to search and fetch the current guides, model page, event-reference sections, endpoint inventory, and the session-creation OpenAPI specification. This is documentation verification, not a test against the authenticated service.
 
@@ -191,7 +223,7 @@ Finish required function results and continuations before closing a production c
 
 The endpoint inventory and SIP guide also document `POST /v1/live/sessions/{session_id}/hangup`, with no body and `200 OK` on success. Keep the sideband alive for `session.closed`. This was verified in the [SIP guide][sip-close]; the OpenAPI tool could not retrieve that listed endpoint, and its linked method-document fetch returned 404. The proposed access probe uses the separately verified `session.close` event, not an assumed HTTP fallback.
 
-A future access-only pass proves session startup and clean termination. It does not prove device audio, delegated model access, storage writes, or app display. A complete acceptance check must additionally exercise the Atech microphone and speaker, a synthetic personal/medical check-in, one authenticated save, reading the saved entry in the app, a repeated-call retry, interruption during playback, and a clean stop. These checks remain pending.
+The Azure access-only pass above proves session startup and clean termination. It does not prove device audio, delegated model access, storage writes, or app display. A complete acceptance check must additionally exercise the Atech microphone and speaker, a synthetic personal/medical check-in, one authenticated save, reading the saved entry in the app, a repeated-call retry, interruption during playback, and a clean stop. These checks remain pending.
 
 ## Atech and app dependencies for the main thread
 

@@ -8,6 +8,7 @@ export type AuthConfig = {
   BETTER_AUTH_URL: string;
   BETTER_AUTH_SECRET: string;
   CORS_ORIGIN: string;
+  CORS_ORIGINS?: string;
   NODE_ENV?: string;
 };
 
@@ -21,7 +22,7 @@ export function createAuth(
       provider: "sqlite",
       schema,
     }),
-    trustedOrigins: [env.CORS_ORIGIN, ...desktopOrigins],
+    trustedOrigins: [env.CORS_ORIGIN, ...(env.CORS_ORIGINS?.split(",").map((value) => value.trim()).filter(Boolean) ?? []), ...desktopOrigins],
     emailAndPassword: { enabled: true },
     secret: env.BETTER_AUTH_SECRET,
     baseURL: env.BETTER_AUTH_URL,

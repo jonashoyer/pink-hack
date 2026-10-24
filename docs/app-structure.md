@@ -2,168 +2,128 @@
 provenance: "Unvetted Synthetic"
 ---
 
-# App structure and shared contracts
+# Flexible app structure and API contracts
 
-Implementation companion to [the PRD](../PRD.md). Routes and interfaces below describe the full intended product. A subset is now implemented in the separate Better-T-Stack Hono/Node backend at `backend/`; see [actual endpoints and evidence](backend.md). Lovable remains the external frontend awaiting connection. Storage belongs to our backend; there is no Notion dependency.
+This implements the intent in [the correction brief](flexible-pages-journal.md) and [PRD](../PRD.md). It supersedes fixed page kinds, metrics, and separate plan/observation product resources. The routes below are the agreed target; [backend.md](backend.md) remains the authority for actual implemented endpoints and verification evidence.
 
-## Component ownership
+## Ownership and runtime
 
-| Component | Owns | Depends on |
-| --- | --- | --- |
-| Lovable app | Navigation, page editing, table views, draft review, optional browser voice | Shared application API |
-| Better-T-Stack application backend | Authentication, device ownership, Live session configuration, schema validation, workflow transitions | Storage, OpenAI adapter; local backend owner |
-| Context store | Personal-needs and medical-needs page revisions | App database |
-| Journal store | Drafts, confirmed journal entries, retry handling | App database |
-| Voice workflow | Conversation context, draft preparation, confirmation receipt | Context and journal operations |
-| GPT-Live adapter | Session lifecycle and provider-specific event conversion | OpenAI Live API |
-| Atech adapter and bridge | Microphone capture, speaker playback, button events, connection state | Actual device transport, Live audio transport, application API |
+The existing backend thread owns source, dependencies, migrations, application reasoning, and runtime configuration. The PRD/API thread owns these contracts and reconciliation. One assigned Lovable worker owns every remote frontend mutation in testing project `ee916e8c-7f2f-4989-9c6e-cedcff1793b5`. The Atech owner handles device and bridge details.
 
-The dedicated Better-T-Stack Hono/Node backend implements the shared REST API, with Better Auth and Drizzle SQLite/libSQL. Lovable consumes it as an external frontend. Configure its exact origin; the backend validates its own session cookies or bearer tokens. The current backend does not implement the persistent Atech audio bridge.
+Keep Hono/Node, Better Auth, Drizzle SQLite/libSQL, and the existing transaction/revision/idempotency checks. Lovable is the external frontend, not another storage backend.
 
-Persistent Atech audio belongs in a laptop or service runtime that supports long connections. Do not assume that a short HTTP request can own an indefinite audio bridge.
+The known local API is `http://localhost:3000`. A verified public HTTPS API URL has not been supplied. The developer authorized one deployed demo service; the backend owner is preparing it and must provide one fixed reachable URL and the exact actual frontend origin. CORS and origin checks do not replace authentication.
 
-## Navigation and routes
+The same service hosts the device audio relay and one authenticated WSS ingress. The owner publishes the fixed device JSON/binary contract and PCM rate/encoding/chunk limits. No laptop bridge, bridge configuration product, or environment selector is part of this demo. Actual authenticated device binding and bidirectional audio remain unverified.
 
-```text
-App shell
-  /                         Today and latest saved day plan
-  About me
-  /needs/personal           Personal-needs page
-  /needs/medical            Medical-needs page
-  /journal                  Daily-journal database table
-  /journal/new              Text entry and check-in draft
-  /journal/$entryId         Saved entry as an editable page
-  /patterns                 Confirmed observations with source entries
-  /assistant                Voice controls and current review
-  /settings                 Timezone, context consent, device management
-  /sign-in                  Authentication
-```
+## Minimal frontend
 
-Primary navigation retains Today, Journal, Patterns, and About me from the [existing design](superpowers/specs/2026-10-24-today-first-companion-design.md). Assistant controls and settings are secondary destinations. Personal needs and medical needs are About me child pages.
+    Sidebar
+      Add page
+      User-created page titles
+      Journal
 
-The journal table shows local date, title, energy, mood, symptom summary, and source. Each row opens a page with original text, observations, note, and day plan. Blank energy or mood is "not recorded", not zero. The Today page retrieves all today's entries in the user's timezone and shows the latest accepted plan. Patterns shows confirmed observations at their actual timestamps with coverage, gaps, and links to source entries. It does not average multiple daily reports implicitly.
+    /pages/$pageId             Arbitrary context page editor
+    /journal                   Fixed Journal table
+    /journal/$entryId          Properties and editable entry body
+    /sign-in                   Authentication
 
-Personal needs contains communication preferences, routines, priorities, support needs, and helpful activities. Medical needs contains self-reported treatment context, symptoms to track, care-team instructions, and care-team questions. Fixed section types and a small supported block set, such as text and checklist, provide page editing without a universal document editor.
+Voice controls and connection/confirmation status accompany the selected page or Journal. There are no compulsory Today, About me, Patterns, personal-needs, or medical-needs destinations.
 
-## Data model
+Use `@blocknote/core`, `@blocknote/react`, and `@blocknote/shadcn`. Mount the editor on the client, save `editor.document`, and load saved blocks as `initialContent` using the chosen package version's documented lifecycle. Validate that lifecycle in the real Lovable scaffold. Native JSON is authoritative; Markdown exports or plain text are derived context only.
 
-Every user-owned table carries `owner_id`. The API derives it from authentication. Access policies enforce it again at the database layer.
+The Journal view derives visible property columns from stored entries. Do not build a second database-definition product. The standard title/date/source metadata coexists with custom properties. Day plans are ordinary content blocks.
 
-| Table | Essential fields and constraints |
+## Record contracts
+
+| Record | Current target fields |
 | --- | --- |
-| `profiles` | `owner_id`, `preferred_name`, `timezone`, `locale`, `allow_medical_voice_context`; one profile per user |
-| `context_pages` | `id`, `owner_id`, `kind: personal_needs or medical_needs`, `title`, `sections`, `revision`, `updated_at`; unique owner and kind |
-| `journal_entries` | `id`, `owner_id`, `journal_date`, `created_at`, `updated_at`, `title`, `original_text`, `note`, `source: app or atech`, `session_id`, `context_revisions`, `revision`, `operation_id`; unique owner and operation ID |
-| `observations` | `id`, `owner_id`, `entry_id`, `metric`, `value`, optional `unit`, `observed_at`, `confirmation_state`, `source_reference`, `revision`; source entry required |
-| `day_plans` | `id`, `owner_id`, `journal_date`, `source_entry_ids`, `context_revisions`, `items`, `state: draft or accepted`, `revision`, timestamps; accepting a replacement requires explicit user choice |
-| `checkin_sessions` | `id`, `owner_id`, `device_id`, `source`, `stage`, `draft`, `draft_revision`, `context_revisions`, `saved_entry_id`, `created_at`, `updated_at`; resumes independently of a voice transport |
-| `devices` | `id`, `owner_id`, `gateway_device_ref`, `display_name`, `credential_hash`, `revoked_at`, `last_seen_at`; plaintext device credentials are never returned after pairing |
+| Page | `id`, `title`, `content`, `revision`, `created_at`, `updated_at`; authenticated owner stored server-side |
+| JournalDraft | `title`, `original_text`, `content`, `properties` |
+| JournalEntry | Draft fields plus `id`, `journal_date`, `source`, `context_revisions`, `revision`, UTC timestamps, capture/session/operation metadata |
+| Checkin | Existing session/stage/draft/revision metadata plus create/update action, optional bound target entry and expected target revision, confirmation, saved result |
+| Profile/device | Existing authenticated ownership/runtime preferences; paired device identity when implemented |
 
-Observation metrics include energy as a labeled integer self-report from 1 to 5, matching the approved written design, optional self-reported mood, optional sleep hours, and symptom reports with name, optional reported severity, and note. Use the same energy labels in capture, validation, extraction review, and charts; the mockup's three categories are illustrative only. Final labels remain a product choice. Missing values remain null or absent. Plan items have stable IDs, text, optional timing, rationale, smaller alternatives, and active/deferred/removed state. Acceptance and activity completion are separate. All text and lists have bounded sizes in the shared schema.
+`content` is an array of bounded native BlockNote block objects. Support the block types installed by the frontend's selected standard editor. Preserve nested document structure and styles; validate object depth, size, and allowed block fields centrally. The backend owner records exact limits in the shared validator.
 
-Keep observations and plans as separate records, as proposed in the existing design. Embedding everything in one journal JSON field would be an expedient persistence test, but would complicate chart provenance, corrections, and plan acceptance. This spec chooses separate records for implementation. A confirmed journal commit writes the entry, reviewed observations, associated plan, and saved session state atomically. Corrections retain source references and mark affected suggestions for review. Deleting an entry removes its observation points and marks dependent plans for review.
+`properties` is a string-keyed map. Values are string, finite number, boolean, null, or lists of these scalars. Missing values remain absent. The shared validator bounds key lengths, item counts, list lengths, and total size. No mandatory energy/mood/symptom enum exists. A user's chosen Energy property may use a numeric scale, but that is content-specific.
 
-No date uniqueness constraint exists on journal entries. App text entry gets its own capture/session ID. `context_revisions` maps each context page ID to the revision read for this session. Provider session IDs are session metadata, not owner credentials.
+Dates and owner IDs remain server-controlled metadata. The server captures journal date from the user's timezone at check-in creation; multiple entries per day are allowed. Content revisions record the custom pages used by a proposal.
 
-The server chooses `journal_date` from the user's timezone at capture start. A user can explicitly correct it. It stores UTC timestamps separately. Later edits increment the entry revision.
+## Storage change
 
-## Shared application API
+Add a generic `pages` table while preserving legacy `context_pages` for migration. Add native `content` and `properties` fields to `journal_entries`. Keep legacy note/observation/day-plan data for explicit migration/audit until the backend owner verifies preservation. The active API reads and writes the generic model.
 
-These are application endpoints on the Better-T-Stack backend. They wrap OpenAI and app storage; clients do not call privileged provider APIs or the database with service credentials. The backend owner maps these contracts to the generated framework and documents any equivalent endpoint names.
+Day plans do not create a new table, separate API resource, or acceptance state. Existing plan/checklist text can be migrated into entry blocks without inventing facts or changing metric meaning. Migration records must identify source data and be verified before legacy cleanup. No permanent dual-write product model is required.
 
-| Method and path | Input | Result |
+## Agreed REST endpoints
+
+All `/api/v1` operations authenticate a Better Auth cookie or an in-memory session bearer token. The backend derives owner identity. Request names use snake_case. Resource responses below are direct records unless a wrapper is shown.
+
+| Method and route | Input | Result |
 | --- | --- | --- |
-| `POST /api/v1/profile` | Authenticated user, timezone, stable operation ID | Idempotent profile and empty personal/medical context pages; no mutation on context GET |
-| `PATCH /api/v1/profile` | Editable preferences and context-use choice, expected revision | Updated owned profile and revision |
-| `GET /api/v1/context` | Authenticated user | Profile, allowed context pages, revisions |
-| `PATCH /api/v1/pages/:id` | Validated sections, `expected_revision` | Saved page and new revision |
-| `GET /api/v1/journal` | Date range, opaque cursor | Owned entries and next cursor |
-| `GET /api/v1/journal/:id` | Entry ID | Owned journal page |
-| `PATCH /api/v1/journal/:id` | Editable fields, `expected_revision` | Saved entry and new revision |
-| `GET /api/v1/patterns` | Metric, date range | Owned confirmed observation points, source entry IDs, coverage |
-| `PATCH /api/v1/observations/:id` | Reviewed value, `expected_revision` | Corrected observation with source reference |
-| `PATCH /api/v1/day-plans/:id` | Edited items, `expected_revision` | Saved plan draft |
-| `GET /api/v1/day-plans` | Local date | Owned drafts and accepted plan for Today |
-| `POST /api/v1/day-plans` | Source entry IDs, manual items, stable operation ID | New owned draft with source revisions; no accepted-plan replacement |
-| `POST /api/v1/day-plans/:id/generate` | Plan expected revision, source revisions, stable operation ID | AI-generated draft from confirmed observations and permitted context; preserves prior draft on failure |
-| `POST /api/v1/day-plans/:id/accept` | Plan revision, explicit replacement choice if needed | Accepted plan without silent replacement |
-| `POST /api/v1/checkins` | `source`, optional paired `device_id`, stable `operation_id` | Session ID, stage, allowed context |
-| `GET /api/v1/checkins/:id` | Session ID | Current stage, draft revision, saved entry ID |
-| `PUT /api/v1/checkins/:id/draft` | Structured draft, `expected_revision` | Validated draft and new revision |
-| `POST /api/v1/checkins/:id/extract` | Source text revision, draft expected revision, stable operation ID | Unconfirmed observation suggestions; never overwrites reviewed values |
-| `POST /api/v1/checkins/:id/confirm` | `draft_revision`, save action, unique operation ID | Confirmation receipt bound to owner, session, and revision |
-| `POST /api/v1/checkins/:id/commit` | Confirmation receipt, same operation ID | Saved entry ID and revision; retry returns original result |
-| `POST /api/v1/checkins/:id/cancel` | Session ID | Canceled state; no journal write |
-| `POST /api/v1/voice/sessions` | Check-in ID, supported transport offer | Provider session ID and negotiated connection data |
-| `POST /api/v1/voice/sessions/:id/close` | Owned provider session ID | Provider close acknowledgement and retained draft state |
-| `POST /api/v1/devices/pair` | Authenticated user and one-time pairing challenge | Owned device identity and scoped bridge credential |
-| `DELETE /api/v1/devices/:id` | Owned device ID | Revocation acknowledgement |
+| `GET /api/v1/context` | Authenticated owner | `{profile,pages}`, all live owned pages and revisions |
+| `GET /api/v1/pages` | Optional cursor | `{pages,next_cursor}` |
+| `GET /api/v1/pages/:id` | Page ID | Page |
+| `POST /api/v1/pages` | `title,content,operation_id` | Page |
+| `PATCH /api/v1/pages/:id` | `expected_revision,operation_id,title?,content?` | Page |
+| `DELETE /api/v1/pages/:id` | `expected_revision,operation_id` | Archive acknowledgement; omitted from future context |
+| `GET /api/v1/journal` | `from?,to?,limit?,cursor?` | `{entries,next_cursor}` |
+| `GET /api/v1/journal/:id` | Entry ID | JournalEntry |
+| `PATCH /api/v1/journal/:id` | `expected_revision,operation_id,title?,content?,properties?` | JournalEntry |
+| `POST /api/v1/checkins` | `source,operation_id` | Checkin |
+| `GET /api/v1/checkins/:id` | Check-in ID | Checkin |
+| `PUT /api/v1/checkins/:id/draft` | `expected_revision,draft:JournalDraft` | Checkin |
+| `POST /api/v1/checkins/:id/prepare-update` | `entry_id,expected_entry_revision,expected_revision,draft` | Checkin with bound update target |
+| `POST /api/v1/checkins/:id/confirm` | `draft_revision,action:"save",operation_id` | Confirmation receipt and bound proposal metadata |
+| `POST /api/v1/checkins/:id/commit` | `confirmation_receipt,operation_id` | Saved JournalEntry |
+| `POST /api/v1/checkins/:id/cancel` | Empty body | Canceled state; no journal write |
 
-Both explicit app save and voice-confirmed save follow confirmation then commit. Confirmation binds to the current draft; a changed draft invalidates it. Voice confirmation arrives from the authenticated client after the user's explicit answer and the backend rejects mismatched sessions or revisions. This is suitable for the proposed demo, not a clinical consent system.
+PATCH preserves omitted fields. Supplied `content` or `properties` replaces that field, so the client or agent must merge an edit into the complete current field before submission. It must preserve unrelated blocks and properties. The expected revision prevents a stale merge from replacing newer writing.
 
-The server commits the journal records and session's saved state together. Confirmation includes whether the displayed plan is accepted or saved as a draft. It enforces operation uniqueness and returns the prior entry for a retry. Session creation is also idempotent by owner and operation ID. Page, entry, observation, and plan edits require expected revisions. A stale edit returns `409 revision_conflict` with a reload hint.
+Page creation and PATCH operations use stable operation IDs. Replay with the same payload returns the prior result; reuse with changed payload conflicts. The backend owner must report any final signature adjustment before frontend wiring.
 
-Persisting writing with manual observations or no observations must succeed independently of AI. A saved check-in session remains terminal; later plan creation or generation uses the owned day-plan operations and references the saved entry. Validate plan/source revisions again before applying generated content. Failure or a stale result leaves the prior saved writing and plan intact. Context or observation changes mark affected suggestions for review rather than regenerating an accepted plan silently.
+## Confirmed create and update
 
-Errors use `{ error: { code, message, retryable }, request_id }`. Use `401` for missing authentication, `403` for rejected device access, `404` for inaccessible user-owned records, `409` for state/revision conflicts, `422` for invalid input, `429` for session limits, and `502/503` for provider or storage failure. Responses and logs omit secrets and private prompt contents.
+A new check-in collects a generic draft. To update a saved entry, create a new check-in, read that entry, then prepare-update with its expected revision. Saved/canceled sessions remain terminal.
 
-## Assistant tool boundary
+Confirmation binds owner, check-in, draft revision, action, target entry/expected revision, and operation ID. Confirming an update cannot authorize a different entry or later revision. Draft changes invalidate confirmation. Commit atomically creates or updates the bound entry and records the saved session result. A repeated commit returns the original record. Revision mismatch rejects the whole mutation.
+
+The authenticated client records explicit spoken confirmation or a deliberate UI action. This is independent of model tool execution. The model cannot mint a receipt or self-confirm. Speech fragments, unrelated replies, cancellation, and a draft changed during interruption do not authorize saving.
+
+Direct manual editing calls the same storage services with revisions and operation IDs. Voice uses proposal/confirmation/commit for journal writes. There is no separate plan-state field in the generic flow.
+
+## Agent and context boundary
+
+Tools use the same backend services:
 
 | Tool | Behavior |
 | --- | --- |
-| `get_context` | Read the permitted current context and recent journal entries |
-| `get_checkin` | Read the authoritative check-in stage and draft |
-| `prepare_journal_draft` | Validate and store a proposed draft; return its revision |
-| `confirm_journal_draft` | Record the user's explicit save confirmation for that revision |
-| `commit_journal_entry` | Commit only with a matching confirmation receipt; return verified entry ID |
-| `cancel_checkin` | Cancel without committing |
+| `get_context` | Read all owned custom pages and relevant recent history |
+| `get_page`, `get_journal_entry`, `get_checkin` | Read current owned records and revisions |
+| `prepare_journal_draft` | Prepare a generic new-entry proposal |
+| `prepare_journal_update` | Prepare content/properties changes for a bound entry revision |
+| `commit_journal_entry` | Execute only with a matching existing confirmation receipt |
+| `cancel_checkin` | Cancel without saving |
 
-Tools accept record IDs only within the authenticated session. The API owns medical-context consent, allowed destinations, validation, and state transitions. The voice model's output is input to this API, not proof of a successful action. Stored page content is user data and never becomes tool authorization.
+There is no model confirmation tool. The existing `POST /api/v1/voice/sessions/:id/tools` validates allowed names, arguments, ownership, and receipts. Success output identifies the saved entry/revision only after persistence.
 
-GPT-Live conversation instructions stay short. The backend reasoning layer owns the detailed check-in procedure and tool definitions. Responses delegation or client delegation must follow the verified Live event contracts in [API readiness](api-readiness.md). No provider event payload is invented by this document.
+All live owned custom pages are eligible context. Content supplies preferences and facts, not executable policy. The workflow tracks page revisions and handles context-size limits explicitly rather than silently dropping categories or pages. Reconcile existing user privacy choices without guessing sensitivity from page titles. Recent journal history is selected separately; every historical entry is not required on every turn.
 
-## Workflow state
+## Reusable voice module and authentication
 
-```text
-created -> collecting -> draft -> awaiting_confirmation -> saved
-                           ^              |
-                           |---- revise --|
-created / collecting / draft / awaiting_confirmation -> canceled
-```
+Existing `POST /api/v1/voice/sessions` accepts `checkin_id,operation_id,transport:{type:"webrtc",sdp}`. It returns `{id,provider,model,delegation,session:{id},transport:{type,sdp}}`. The outer ID is our voice record; the inner session ID is the provider's. The client validates the exact model, session, and delegation before enabling audio.
 
-Connection state is separate from workflow stage. A transport error can occur in any unsaved stage without destroying the draft. Saved and canceled sessions are terminal. A new journal entry uses a new session. Refresh and reconnect read state from the API rather than replaying old tool calls blindly.
+`@backend/client` is a private workspace package, not a published dependency. The sole Lovable writer can copy/adapt the two framework-independent source modules `backend/packages/client/src/index.ts` and `live-protocol.ts` into remote `src/lib/voice/`, retaining their relative import. Import `createVoiceConnection` locally. The backend owner owns upstream source; report changes rather than maintaining an unrelated protocol implementation.
 
-## Atech connection
+Supply `apiBaseUrl,checkinId,sessionToken,onStatus,onTranscript,onError,onDelegation`. Start from a user click, close on stop/unmount, and report `close().confirmed` accurately. The modules contain no provider secret or finance/demo storage.
 
-The proposed bridge pairs with the user's account, resolves the permitted gateway device, and starts a check-in through the shared API. It translates actual microphone events into the audio transport accepted by GPT-Live and routes returned speech to the speaker. It relays tool events to the application API and returns matching tool results to GPT-Live. Button events start or stop a session; available LEDs display connection state.
+Authentication uses `/api/auth/sign-up/email` and `/api/auth/sign-in/email`. Browser calls use credentials include or a session bearer token kept in memory. Provider keys never enter the client. A remote Lovable page must be able to reach the backend; local health checks do not establish that.
 
-Published Atech source indicates PCM streaming in one firmware implementation, but sample rates, throughput, speaker playback, interruption, echo behavior, gateway authorization, and available modules need testing. Browser voice is useful for isolating API problems, but does not satisfy device voice acceptance. Standalone device voice remains a separate unverified runtime option.
+Azure uses client delegation. `onDelegation` receives delegation metadata, bounded lossy transcripts, check-in ID, and an abort signal. It needs a trusted application reasoning workflow that retrieves current backend records and executes allowed tools. That callback/agent endpoint is not established by the transport module. Do not fabricate a successful callback or save while it is missing. The fixed demo connection uses the configured Azure provider; existing direct OpenAI code is not a product selector.
 
-If Arduino Uno Q deployment becomes part of the work, read and follow `/Users/j/summer-uno-q/SKILL.md` and its board scripts exactly. No Uno Q deployment is part of this specification's evidence.
+## Failure and verification
 
-## Proposed source layout
+Retain the existing error envelope `{error:{code,message,retryable},request_id}`. Use 401 for missing auth, 404 for inaccessible records, 409 for revision/state/idempotency conflicts, 422 for invalid content/properties, and 503 for storage failure. A failed write retains its proposal. Automatic retries keep the same operation ID and never create a fresh paid voice session.
 
-Adapt frontend paths to Lovable's inspected routing conventions. The backend tree below names responsibilities; the backend owner reconciles paths with the actual Better-T-Stack output. These are future owners, not verified local files.
-
-```text
-Lovable project
-  src/routes/                 App pages
-  src/features/needs/         Context page forms and display
-  src/features/journal/       Database table, entry page, review panel
-  src/features/assistant/     Browser session controls and status
-  src/features/devices/       Pairing and device management
-
-Local Better-T-Stack backend
-  API routes                  /api/v1 operations
-  Shared contracts            Request, response, and record schemas
-  Auth                        User and device authentication
-  Context                     Context reads and revision-checked writes
-  Journal                     Session transitions, confirmation, idempotent commit
-  Voice                       GPT-Live adapter and tool dispatch
-  Storage                     Database access and migrations
-  Atech bridge                Persistent audio and gateway adapter
-```
-
-## Integration handoff
-
-The app owner consumes the shared schemas and API without depending on audio firmware. The separate backend scaffold thread owns local backend files, dependency changes, API/storage implementation, and integration. The PRD thread owns these requirements and contracts and avoids backend edits. Voice and device ownership must be coordinated with the backend owner before implementation. The device owner verifies gateway/audio conversion and actual hardware. A demo candidate has not been established.
+The existing twelve-test foundation and Azure startup/close probe verify the prior schema and provider access respectively. New schema/migration, generic CRUD, voice-confirmed writes, application reasoning, cloud frontend, and real Atech audio need new evidence. No public HTTPS API URL or complete demo candidate is established.

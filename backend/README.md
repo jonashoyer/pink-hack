@@ -1,6 +1,10 @@
-# backend
+---
+provenance: Unvetted Synthetic
+---
 
-This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines Hono, and more.
+# Pink Hack backend
+
+Created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack). Hono/Node exposes the authenticated context and journal API for the separate Lovable frontend. Better Auth and Drizzle SQLite/libSQL own user accounts and storage. See [setup, exact endpoints and current gaps](../docs/backend.md).
 
 ## Features
 
@@ -18,6 +22,7 @@ First, install the dependencies:
 
 ```bash
 pnpm install
+pnpm setup:local
 ```
 
 ## Database Setup
@@ -31,16 +36,18 @@ This project uses SQLite with Drizzle ORM.
 3. Apply the schema to your database:
 
 ```bash
-pnpm run db:push
+pnpm -C packages/db db:migrate
 ```
 
 Then, run the development server:
 
 ```bash
-pnpm run dev
+pnpm run dev:server
 ```
 
 The API is running at [http://localhost:3000](http://localhost:3000).
+
+`pnpm dev:server` and `pnpm start` load private provider settings from the repository root `.env`, with nonempty `apps/server/.env` provider settings taking precedence. Azure uses the Live endpoint and `api-key` authentication. A direct OpenAI key is optional. Run `pnpm build` before `pnpm start`.
 
 ## Environment Configuration
 
@@ -69,8 +76,9 @@ backend/
 - `pnpm run build`: Build all applications
 - `pnpm run dev:server`: Start only the server
 - `pnpm run check-types`: Check TypeScript types across all apps
+- `pnpm test`: Run synthetic-data backend and client-protocol tests
 - `pnpm run db:push`: Push schema changes to database
-- `pnpm run db:generate`: Generate database client/types
+- `pnpm run db:generate`: Generate SQL migrations from the Drizzle schema
 - `pnpm run db:migrate`: Run database migrations
 - `pnpm run db:studio`: Open database studio UI
 

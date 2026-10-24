@@ -12,7 +12,7 @@ import { sql, is, SQL, eq } from "drizzle-orm";
 import type { Database } from "@backend/db";
 import { Hono } from "hono";
 import { createJournalRoutes } from "../routes/journal";
-import { DomainError, getContext, patchPage, patchProfile, createCheckin, getCheckin, prepareDraft, confirmDraft, commitCheckin, cancelCheckin, getJournalEntry, listJournal, getVoiceContext, journalDate, journalDraftSchema } from "./journal";
+import { DomainError, getContext, patchPage, patchProfile, createCheckin, getCheckin, prepareDraft, confirmDraft, commitCheckin, cancelCheckin, getJournalEntry, listJournal, getVoiceContext, journalDate, journalDraftSchema, blockContentSchema, propertiesSchema, createPage, getPage, listPages, archivePage, patchJournalEntry, prepareJournalUpdate, migrateLegacyData, normalizeLegacyDraft, blocksToText } from "./journal";
 
 // Test-only DDL derives from actual table definitions, without migrations or
 // touching the application database. All stored content is synthetic.
@@ -46,164 +46,256 @@ async function setup() {
   for (const owner of ["alice", "bob"]) await db.insert(user).values({ id: owner, name: owner, email: `${owner}@example.test` });
   return { db, close: async () => { db.$client.close(); await rm(dir, { recursive: true, force: true }); } };
 }
-const draft: tables.JournalDraft = { title: "Synthetic check-in", original_text: "I would like a short walk. I rate my energy two out of five.", note: "A short walk is today's priority. Reported energy: 2 out of 5.", observations: [{ metric: "energy", value: 2 }, { metric: "sleep_hours", value: 6 }], proposed_plan: { items: [{ id: "walk", text: "Consider a short walk", state: "active" }] } };
+const content: tables.BlockContent = [
+  { id: "note", type: "paragraph", content: [{ type: "text", text: "Synthetic note", styles: { bold: true } }, { type: "link", href: "https://example.test", content: [{ type: "text", text: "A link", styles: {} }] }] },
+  { id: "plan-heading", type: "heading", props: { level: 2 }, content: "Day plan" },
+  { id: "plan", type: "checkListItem", props: { checked: false }, content: "A short walk" },
+  { id: "table", type: "table", content: { type: "tableContent", rows: [{ cells: [[{ type: "text", text: "Cell", styles: { italic: true } }]] }] } },
+];
+const draft: tables.JournalDraft = { title: "Synthetic journal", original_text: "I would like a short walk.", content, properties: { "garden time": 20, "support needed": ["a lift", null], "made tea": true, nausea: null, energy: "low" } };
 const rejects = (code: string) => (error: unknown) => error instanceof DomainError && error.code === code;
 async function pending(db: Database, operation: string) {
   const checkin = await createCheckin(db, "alice", { source: "app", operation_id: `capture-${operation}` });
   await prepareDraft(db, "alice", checkin.id, { expected_revision: 0, draft });
   return checkin;
 }
-async function confirm(db: Database, checkinId: string, operation_id: string, draft_revision = 1, plan_state: "draft" | "accepted" = "draft", replace_plan_id?: string) {
-  return confirmDraft(db, "alice", checkinId, { draft_revision, action: "save", operation_id, plan_state, ...(replace_plan_id ? { replace_plan_id } : {}) });
+async function confirm(db: Database, checkinId: string, operation_id: string, draft_revision = 1) {
+  return confirmDraft(db, "alice", checkinId, { draft_revision, action: "save", operation_id });
 }
-async function commit(db: Database, checkinId: string, receipt: { receipt: string; operation_id: string }) {
-  return commitCheckin(db, "alice", checkinId, { confirmation_receipt: receipt.receipt, operation_id: receipt.operation_id });
+async function commit(db: Database, checkinId: string, receipt: { confirmation_receipt: string; operation_id: string }) {
+  return commitCheckin(db, "alice", checkinId, { confirmation_receipt: receipt.confirmation_receipt, operation_id: receipt.operation_id });
+}
+async function saved(db: Database, operation: string) {
+  const checkin = await pending(db, operation);
+  const receipt = await confirm(db, checkin.id, `save-${operation}`);
+  return { checkin, receipt, entry: await commit(db, checkin.id, receipt) };
 }
 
-test("owned pages, profile revisions, timezone and device rejection", async () => {
+test("arbitrary pages reload rich BlockNote JSON; edits preserve omitted fields and replay exactly", async () => {
   const { db, close } = await setup();
   try {
-    const context = await getContext(db, "alice");
-    assert.equal(context.pages.length, 2);
-    const page = context.pages[0]!;
-    await assert.rejects(patchPage(db, "bob", page.id, { expected_revision: 0, sections: [] }), rejects("not_found"));
-    assert.equal((await patchPage(db, "alice", page.id, { expected_revision: 0, sections: [{ id: "one", title: "Preference", type: "text", body: "Synthetic text" }] })).revision, 1);
-    await assert.rejects(patchPage(db, "alice", page.id, { expected_revision: 0, sections: [] }), rejects("revision_conflict"));
-    await patchProfile(db, "alice", { expected_revision: 0, timezone: "Pacific/Kiritimati" });
-    await assert.rejects(patchProfile(db, "alice", { expected_revision: 0, timezone: "UTC" }), rejects("revision_conflict"));
-    assert.equal(journalDate("Pacific/Kiritimati", new Date("2026-10-24T23:00:00Z")), "2026-10-25");
-    await assert.rejects(createCheckin(db, "alice", { source: "atech", operation_id: "device" }), rejects("device_not_supported"));
-    await assert.rejects(createCheckin(db, "alice", { source: "app", device_id: "device", operation_id: "device" }), rejects("device_not_supported"));
+    assert.deepEqual((await getContext(db, "alice")).pages, []);
+    const input = { title: "What helps my garden days", content, operation_id: "page-create" };
+    const page = await createPage(db, "alice", input);
+    assert.deepEqual((await getPage(db, "alice", page.id)).content, content);
+    const rename = { title: "Garden and support", expected_revision: 1, operation_id: "page-rename" };
+    const renamed = await patchPage(db, "alice", page.id, rename);
+    assert.deepEqual(renamed.content, content);
+    const edited = await patchPage(db, "alice", page.id, { content: [], expected_revision: 2, operation_id: "page-body" });
+    assert.equal(edited.title, renamed.title);
+    assert.deepEqual(await createPage(db, "alice", input), page);
+    assert.deepEqual(await patchPage(db, "alice", page.id, rename), renamed);
+    await assert.rejects(createPage(db, "alice", { ...input, title: "Different" }), rejects("operation_conflict"));
+    await assert.rejects(patchPage(db, "alice", page.id, { ...rename, title: "Different" }), rejects("operation_conflict"));
+    await assert.rejects(patchPage(db, "alice", page.id, { expected_revision: 1, title: "Stale", operation_id: "stale" }), rejects("revision_conflict"));
+    assert.equal((await getContext(db, "alice")).pages[0]!.title, edited.title);
+    await assert.rejects(getPage(db, "bob", page.id), rejects("not_found"));
+    await assert.rejects(patchPage(db, "bob", page.id, { expected_revision: 3, title: "Foreign", operation_id: "foreign" }), rejects("not_found"));
+    const second = await createPage(db, "alice", { title: "Any other topic", content: [], operation_id: "page-second" });
+    const listing = await listPages(db, "alice", { limit: 1 });
+    assert.ok(listing.next_cursor);
+    const next = await listPages(db, "alice", { limit: 1, cursor: listing.next_cursor });
+    assert.notEqual(next.pages[0]!.id, listing.pages[0]!.id);
+    assert.equal(next.next_cursor, null);
+    const archiveInput = { expected_revision: 1, operation_id: "archive-second" };
+    const archived = await archivePage(db, "alice", second.id, archiveInput);
+    assert.deepEqual(await archivePage(db, "alice", second.id, archiveInput), archived);
+    assert.equal((await getContext(db, "alice")).pages.length, 1);
+    assert.equal((await listPages(db, "alice")).pages.length, 1);
+    await assert.rejects(getPage(db, "alice", second.id), rejects("not_found"));
+    assert.ok((await db.select().from(tables.pages).where(eq(tables.pages.id, second.id)))[0]!.archived_at);
   } finally { await close(); }
 });
 
-test("revision-bound confirmation, atomic commit, owner isolation and stable retries", async () => {
+test("unfamiliar properties and body plan edit preserve all other content and original text", async () => {
   const { db, close } = await setup();
   try {
-    const checkin = await pending(db, "one");
-    assert.equal((await createCheckin(db, "alice", { source: "app", operation_id: "capture-one" })).id, checkin.id);
-    await assert.rejects(getCheckin(db, "bob", checkin.id), rejects("not_found"));
-    await assert.rejects(confirm(db, checkin.id, "save-one", 0), rejects("revision_conflict"));
-    const stale = await confirm(db, checkin.id, "save-one");
-    await prepareDraft(db, "alice", checkin.id, { expected_revision: 1, draft: { ...draft, note: "Revised synthetic note" } });
-    await assert.rejects(commit(db, checkin.id, stale), rejects("confirmation_required"));
-    const receipt = await confirm(db, checkin.id, "save-one", 2, "accepted");
-    assert.deepEqual(await confirm(db, checkin.id, "save-one", 2, "accepted"), receipt);
-    const entry = await commit(db, checkin.id, receipt);
-    assert.equal(entry.original_text, draft.original_text);
-    assert.equal(entry.observations.length, 2);
-    assert.equal(entry.day_plans[0]!.state, "accepted");
-    assert.equal((await commit(db, checkin.id, receipt)).id, entry.id);
-    assert.equal((await listJournal(db, "alice")).entries.length, 1);
-    assert.equal((await listJournal(db, "bob")).entries.length, 0);
+    const { entry, receipt, checkin } = await saved(db, "generic");
+    assert.deepEqual(entry.properties, draft.properties);
+    assert.deepEqual(entry.content, draft.content);
+    assert.equal((await db.select().from(tables.observations)).length, 0);
+    assert.equal((await db.select().from(tables.dayPlans)).length, 0);
+    const newContent = structuredClone(entry.content);
+    newContent[2]!.content = "Rest before the short walk";
+    const patch = { expected_revision: 1, operation_id: "edit-plan", content: newContent };
+    const updated = await patchJournalEntry(db, "alice", entry.id, patch);
+    assert.equal(updated.revision, 2);
+    assert.deepEqual(updated.content[0], entry.content[0]);
+    assert.deepEqual(updated.content[3], entry.content[3]);
+    assert.deepEqual(updated.properties, entry.properties);
+    assert.equal(updated.original_text, entry.original_text);
+    assert.deepEqual(await patchJournalEntry(db, "alice", entry.id, patch), updated);
+    assert.deepEqual(await commit(db, checkin.id, receipt), entry);
+    await assert.rejects(patchJournalEntry(db, "alice", entry.id, { ...patch, title: "Different" }), rejects("operation_conflict"));
+    await assert.rejects(patchJournalEntry(db, "alice", entry.id, { expected_revision: 1, operation_id: "stale-edit", title: "Stale" }), rejects("revision_conflict"));
     await assert.rejects(getJournalEntry(db, "bob", entry.id), rejects("not_found"));
+    await assert.rejects(patchJournalEntry(db, "bob", entry.id, { expected_revision: 2, operation_id: "foreign-entry", title: "Foreign" }), rejects("not_found"));
+  } finally { await close(); }
+});
+
+test("confirmed update targets an owned expected revision; duplicate update returns original result", async () => {
+  const { db, close } = await setup();
+  try {
+    const { entry } = await saved(db, "before-update");
+    const checkin = await createCheckin(db, "alice", { source: "app", operation_id: "update-capture" });
+    const updateDraft = { ...draft, title: "Revised journal", properties: { ...draft.properties, "garden time": 10 } };
+    const input = { entry_id: entry.id, expected_entry_revision: 1, expected_revision: 0, draft: updateDraft };
+    const prepared = await prepareJournalUpdate(db, "alice", checkin.id, input);
+    assert.equal(prepared.target_entry_id, entry.id);
+    const receipt = await confirm(db, checkin.id, "update-save");
+    const updated = await commit(db, checkin.id, receipt);
+    assert.equal(updated.id, entry.id);
+    assert.equal(updated.revision, 2);
+    assert.deepEqual(updated.properties, updateDraft.properties);
+    assert.equal((await listJournal(db, "alice")).entries.length, 1);
+    await patchJournalEntry(db, "alice", entry.id, { expected_revision: 2, operation_id: "later-edit", title: "Later" });
+    assert.deepEqual(await commit(db, checkin.id, receipt), updated);
+    await assert.rejects(prepareJournalUpdate(db, "alice", checkin.id, input), rejects("checkin_closed"));
+    const stale = await createCheckin(db, "alice", { source: "app", operation_id: "stale-capture" });
+    await assert.rejects(prepareJournalUpdate(db, "alice", stale.id, input), rejects("revision_conflict"));
+    await prepareJournalUpdate(db, "alice", stale.id, { ...input, expected_entry_revision: 3 });
+    const staleReceipt = await confirm(db, stale.id, "stale-save");
+    await patchJournalEntry(db, "alice", entry.id, { expected_revision: 3, operation_id: "race-edit", title: "Concurrent edit" });
+    await assert.rejects(commit(db, stale.id, staleReceipt), rejects("revision_conflict"));
+    assert.equal((await getCheckin(db, "alice", stale.id)).stage, "awaiting_confirmation");
+    const foreign = await createCheckin(db, "bob", { source: "app", operation_id: "foreign-capture" });
+    await assert.rejects(prepareJournalUpdate(db, "bob", foreign.id, { ...input, expected_entry_revision: 4 }), rejects("not_found"));
+    const invalid = await createCheckin(db, "alice", { source: "app", operation_id: "invalid-update" });
+    await assert.rejects(prepareJournalUpdate(db, "alice", invalid.id, { ...input, expected_entry_revision: 4, draft: { ...draft, original_text: "Altered original" } }), rejects("original_text_immutable"));
+  } finally { await close(); }
+});
+
+test("confirmation invalidates on revision; canceled and saved sessions are terminal", async () => {
+  const { db, close } = await setup();
+  try {
+    const checkin = await pending(db, "revision");
+    const receipt = await confirm(db, checkin.id, "save-revision");
+    assert.deepEqual(await confirm(db, checkin.id, "save-revision"), receipt);
+    await prepareDraft(db, "alice", checkin.id, { expected_revision: 1, draft: { ...draft, title: "Revised" } });
+    await assert.rejects(commit(db, checkin.id, receipt), rejects("confirmation_required"));
+    await assert.rejects(confirm(db, checkin.id, "new-confirm", 1), rejects("revision_conflict"));
+    await commit(db, checkin.id, await confirm(db, checkin.id, "save-revision", 2));
     await assert.rejects(cancelCheckin(db, "alice", checkin.id), rejects("checkin_closed"));
     await assert.rejects(getVoiceContext(db, "alice", checkin.id), rejects("checkin_closed"));
-    const other = await pending(db, "two");
-    await assert.rejects(confirm(db, other.id, "save-one"), rejects("operation_conflict"));
-  } finally { await close(); }
-});
-
-test("storage failure rolls back all writes and permits retry; cancellation is terminal", async () => {
-  const { db, close } = await setup();
-  try {
-    const checkin = await pending(db, "failure");
-    const receipt = await confirm(db, checkin.id, "save-failure");
-    await db.run(sql.raw("CREATE TRIGGER synthetic_failure BEFORE INSERT ON observations BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END"));
-    await assert.rejects(commit(db, checkin.id, receipt), rejects("storage_unavailable"));
-    assert.equal((await listJournal(db, "alice")).entries.length, 0);
-    assert.equal((await getCheckin(db, "alice", checkin.id)).stage, "awaiting_confirmation");
-    await db.run(sql.raw("DROP TRIGGER synthetic_failure"));
-    await commit(db, checkin.id, receipt);
     const canceled = await pending(db, "cancel");
     await cancelCheckin(db, "alice", canceled.id);
     assert.equal((await cancelCheckin(db, "alice", canceled.id)).stage, "canceled");
     await assert.rejects(prepareDraft(db, "alice", canceled.id, { expected_revision: 1, draft }), rejects("checkin_closed"));
-    await assert.rejects(getVoiceContext(db, "alice", canceled.id), rejects("checkin_closed"));
+    await assert.rejects(getCheckin(db, "bob", canceled.id), rejects("not_found"));
   } finally { await close(); }
 });
 
-test("voice opt-in controls pages and journal text; new drafts attach actual context revisions", async () => {
+test("failure after entry write rolls back and retains retryable draft; concurrent commits recover exactly once", async () => {
   const { db, close } = await setup();
   try {
+    const checkin = await pending(db, "failure");
+    const receipt = await confirm(db, checkin.id, "save-failure");
+    await db.run(sql.raw("CREATE TRIGGER synthetic_failure BEFORE INSERT ON operation_receipts WHEN NEW.operation_id = 'save-failure' BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END"));
+    await assert.rejects(commit(db, checkin.id, receipt), rejects("storage_unavailable"));
+    assert.equal((await listJournal(db, "alice")).entries.length, 0);
+    assert.equal((await getCheckin(db, "alice", checkin.id)).stage, "awaiting_confirmation");
+    await db.run(sql.raw("DROP TRIGGER synthetic_failure"));
+    const results = await Promise.allSettled(Array.from({ length: 4 }, () => commit(db, checkin.id, receipt)));
+    const entry = await commit(db, checkin.id, receipt);
+    for (const result of results) {
+      if (result.status === "fulfilled") assert.deepEqual(result.value, entry);
+      else assert.ok(result.reason instanceof DomainError && result.reason.retryable);
+    }
+    assert.equal((await listJournal(db, "alice")).entries.length, 1);
+  } finally { await close(); }
+});
+
+test("all owned pages enter voice context regardless of legacy kinds; snapshot records actual revisions", async () => {
+  const { db, close } = await setup();
+  try {
+    const page = await createPage(db, "alice", { title: "My treatment questions", content, operation_id: "context-page" });
+    await createPage(db, "bob", { title: "Foreign page", content, operation_id: "context-page" });
     const checkin = await pending(db, "voice");
-    const personal = (await getContext(db, "alice")).pages.find((p) => p.kind === "personal_needs")!;
-    await patchPage(db, "alice", personal.id, { expected_revision: 0, sections: [] });
+    await patchPage(db, "alice", page.id, { expected_revision: 1, operation_id: "context-edit", title: "Whatever I need" });
     const voice = await getVoiceContext(db, "alice", checkin.id);
     assert.equal(voice.pages.length, 1);
-    assert.equal(voice.pages[0]!.kind, "personal_needs");
-    assert.equal(voice.context_revisions[personal.id], 1);
-    assert.equal(voice.checkin.context_revisions[personal.id], 0);
-    assert.deepEqual(voice.recent_journal_entries, []);
+    assert.equal(voice.pages[0]!.title, "Whatever I need");
+    assert.equal(voice.profile.allow_medical_voice_context, false);
+    assert.equal(voice.context_revisions[page.id], 2);
+    assert.equal(voice.checkin.context_revisions[page.id], 1);
     const revised = await prepareDraft(db, "alice", checkin.id, { expected_revision: 1, draft });
     assert.deepEqual(revised.context_revisions, voice.context_revisions);
-    await patchProfile(db, "alice", { expected_revision: 0, allow_medical_voice_context: true });
-    assert.equal((await getVoiceContext(db, "alice", checkin.id)).pages.length, 2);
-    await prepareDraft(db, "alice", checkin.id, { expected_revision: 2, draft });
-    await commit(db, checkin.id, await confirm(db, checkin.id, "save-voice", 3));
-    const second = await createCheckin(db, "alice", { source: "app", operation_id: "second-voice" });
-    assert.equal((await getVoiceContext(db, "alice", second.id)).recent_journal_entries.length, 1);
-    await patchProfile(db, "alice", { expected_revision: 1, allow_medical_voice_context: false });
-    assert.equal((await getVoiceContext(db, "alice", second.id)).recent_journal_entries.length, 0);
+    await archivePage(db, "alice", page.id, { expected_revision: 2, operation_id: "context-archive" });
+    assert.deepEqual((await getVoiceContext(db, "alice", checkin.id)).pages, []);
   } finally { await close(); }
 });
 
-test("accepted plans require explicit replacement; cursors preserve multiple entries per day", async () => {
+test("context overflow is explicit; page listings remain available for recovery", async () => {
   const { db, close } = await setup();
   try {
-    const first = await pending(db, "plan-one");
-    const entry = await commit(db, first.id, await confirm(db, first.id, "save-plan-one", 1, "accepted"));
-    const second = await pending(db, "plan-two");
-    const receipt = await confirm(db, second.id, "save-plan-two", 1, "accepted");
-    await assert.rejects(commit(db, second.id, receipt), rejects("plan_replacement_required"));
-    assert.equal((await listJournal(db, "alice")).entries.length, 1);
-    await prepareDraft(db, "alice", second.id, { expected_revision: 1, draft });
-    await commit(db, second.id, await confirm(db, second.id, "save-plan-two", 2, "accepted", entry.day_plans[0]!.id));
-    const plans = await db.select().from(tables.dayPlans).where(eq(tables.dayPlans.owner_id, "alice"));
-    assert.equal(plans.filter((p) => p.state === "accepted").length, 1);
-    assert.equal(plans.filter((p) => p.state === "draft").length, 1);
-    const page = await listJournal(db, "alice", { limit: 1 });
-    assert.ok(page.next_cursor);
-    const next = await listJournal(db, "alice", { limit: 1, cursor: page.next_cursor });
-    assert.equal(next.entries.length, 1);
-    assert.notEqual(page.entries[0]!.id, next.entries[0]!.id);
-    assert.equal(next.next_cursor, null);
-    assert.equal((await listJournal(db, "bob", { cursor: page.next_cursor })).entries.length, 0);
-    await assert.rejects(listJournal(db, "alice", { from: "2024-01-01", to: "2026-01-01" }), rejects("invalid_input"));
+    for (let i = 0; i < 201; i++) await db.insert(tables.pages).values({ id: `page-${String(i).padStart(3, "0")}`, owner_id: "alice", title: "Synthetic", content: [], operation_id: `bulk-${i}`, creation_hash: "synthetic", created_at: "2026-10-24T00:00:00Z", updated_at: "2026-10-24T00:00:00Z" });
+    await assert.rejects(getContext(db, "alice"), rejects("context_overflow"));
+    assert.equal((await listPages(db, "alice", { limit: 100 })).pages.length, 100);
   } finally { await close(); }
 });
 
-test("routes reject malformed JSON, extra ownership, invalid dates and missing authentication", async () => {
+test("legacy migration is atomic and idempotent; preserves records, original text and energy categories", async () => {
   const { db, close } = await setup();
   try {
+    const timestamp = "2026-10-24T00:00:00Z";
+    const legacyDraft: tables.LegacyJournalDraft = { title: "Legacy", original_text: "Unmodified original", note: "Legacy note", observations: [{ metric: "energy", value: "low" }, { metric: "sleep_hours", value: 6 }], proposed_plan: { items: [{ id: "item", text: "Rest", state: "deferred" }] } };
+    await db.insert(tables.contextPages).values({ id: "legacy-page", owner_id: "alice", kind: "medical_needs", title: "Legacy custom title", sections: [{ id: "section", title: "Question", type: "checklist", items: [{ id: "question", text: "Synthetic question", checked: true }] }], revision: 4, updated_at: timestamp });
+    await db.insert(tables.checkinSessions).values({ id: "legacy-saved", owner_id: "alice", source: "app", operation_id: "legacy-capture", stage: "saved", journal_date: "2026-10-24", draft: legacyDraft, draft_revision: 1, context_revisions: { "legacy-page": 4 }, saved_entry_id: "legacy-entry", created_at: timestamp, updated_at: timestamp });
+    await db.insert(tables.checkinSessions).values({ id: "legacy-pending", owner_id: "alice", source: "app", operation_id: "legacy-pending-capture", stage: "awaiting_confirmation", journal_date: "2026-10-24", draft: legacyDraft, draft_revision: 2, context_revisions: {}, confirmation: { receipt: "old-receipt", operation_id: "old-save", draft_revision: 2, plan_state: "accepted" }, confirmation_operation_id: "old-save", created_at: timestamp, updated_at: timestamp });
+    await db.insert(tables.journalEntries).values({ id: "legacy-entry", owner_id: "alice", journal_date: "2026-10-24", title: "Legacy", original_text: legacyDraft.original_text, note: legacyDraft.note, source: "app", session_id: "legacy-saved", operation_id: "legacy-save", context_revisions: { "legacy-page": 4 }, created_at: timestamp, updated_at: timestamp });
+    await db.insert(tables.observations).values({ id: "legacy-observation", owner_id: "alice", entry_id: "legacy-entry", metric: "energy", value: "low", observed_at: timestamp, confirmation_state: "confirmed", source_reference: "legacy-entry" });
+    await db.insert(tables.dayPlans).values({ id: "legacy-plan", owner_id: "alice", entry_id: "legacy-entry", journal_date: "2026-10-24", source_entry_ids: ["legacy-entry"], context_revisions: {}, items: legacyDraft.proposed_plan!.items, state: "accepted", created_at: timestamp, updated_at: timestamp });
+    assert.equal((await getCheckin(db, "alice", "legacy-pending")).legacy_draft_requires_review, true);
+    assert.equal(normalizeLegacyDraft(legacyDraft).properties.energy, "low");
+    assert.equal((await getJournalEntry(db, "alice", "legacy-entry")).properties.energy, "low");
+    const before = { pages: await db.select().from(tables.contextPages), observations: await db.select().from(tables.observations), plans: await db.select().from(tables.dayPlans) };
+    assert.deepEqual(await migrateLegacyData(db), { pages: 1, journal_entries: 1, pending_drafts: 1 });
+    const entry = await getJournalEntry(db, "alice", "legacy-entry");
+    assert.equal(entry.properties.energy, "low");
+    assert.equal(entry.original_text, "Unmodified original");
+    assert.match(blocksToText(entry.content), /Day plan/);
+    const migrated = (await getContext(db, "alice")).pages[0]!;
+    assert.equal(migrated.title, "Legacy custom title");
+    assert.equal(migrated.content[1]!.props!.checked, true);
+    const pendingCheckin = await getCheckin(db, "alice", "legacy-pending");
+    assert.equal(pendingCheckin.draft_revision, 3);
+    assert.equal(pendingCheckin.confirmation, null);
+    assert.deepEqual((await db.select().from(tables.checkinSessions).where(eq(tables.checkinSessions.id, "legacy-pending")))[0]!.legacy_draft, legacyDraft);
+    await patchPage(db, "alice", migrated.id, { expected_revision: 4, operation_id: "edit-migrated", title: "Edited after migration" });
+    assert.deepEqual(await migrateLegacyData(db), { pages: 0, journal_entries: 0, pending_drafts: 0 });
+    assert.equal((await getPage(db, "alice", migrated.id)).title, "Edited after migration");
+    assert.deepEqual(await db.select().from(tables.contextPages), before.pages);
+    assert.deepEqual(await db.select().from(tables.observations), before.observations);
+    assert.deepEqual(await db.select().from(tables.dayPlans), before.plans);
+    assert.equal((await db.select().from(tables.journalEntries))[0]!.note, "Legacy note");
+  } finally { await close(); }
+});
+
+test("validators bound recursive rich JSON and properties; API rejects malformed JSON and extra ownership", async () => {
+  const { db, close } = await setup();
+  try {
+    assert.equal(blockContentSchema.safeParse(content).success, true);
+    assert.equal(blockContentSchema.safeParse([{ id: "duplicate" }, { children: [{ id: "duplicate" }] }]).success, false);
+    let nested: tables.PartialBlock = { content: "Deep" };
+    for (let i = 0; i < 9; i++) nested = { children: [nested] };
+    assert.equal(blockContentSchema.safeParse([nested]).success, false);
+    assert.equal(propertiesSchema.safeParse({ unfamiliar: ["value", 1, true, null] }).success, true);
+    assert.equal(propertiesSchema.safeParse({ nested: { invalid: true } }).success, false);
+    assert.equal(propertiesSchema.safeParse({ infinite: Infinity }).success, false);
+    assert.equal(journalDraftSchema.safeParse(draft).success, true);
     const app = new Hono<{ Variables: { userId: string } }>();
     app.use("*", async (c, next) => { c.set("userId", "alice"); await next(); });
     app.route("/api/v1", createJournalRoutes(db));
     app.onError((error, c) => error instanceof DomainError ? c.json({ code: error.code }, error.status as 400) : c.json({ code: "unexpected" }, 500));
-    for (const body of ["{", JSON.stringify({ source: "app", operation_id: "test", owner_id: "bob" }), JSON.stringify({ source: "app", operation_id: "x".repeat(129) })]) assert.equal((await app.request("/api/v1/checkins", { method: "POST", headers: { "Content-Type": "application/json" }, body })).status, 422);
+    for (const body of ["{", JSON.stringify({ title: "Page", content: [], operation_id: "test", owner_id: "bob" })]) assert.equal((await app.request("/api/v1/pages", { method: "POST", headers: { "Content-Type": "application/json" }, body })).status, 422);
     assert.equal((await app.request("/api/v1/journal?from=2026-02-30")).status, 422);
-    assert.equal((await app.request("/api/v1/journal?cursor=garbage")).status, 422);
-    assert.equal(journalDraftSchema.safeParse({ ...draft, observations: [{ metric: "sleep_hours", value: 25 }] }).success, false);
-    for (const value of ["low", 0, 6, 2.5]) assert.equal(journalDraftSchema.safeParse({ ...draft, observations: [{ metric: "energy", value }] }).success, false);
+    assert.equal((await app.request("/api/v1/pages?cursor=garbage")).status, 422);
+    await assert.rejects(createCheckin(db, "alice", { source: "atech", operation_id: "device" }), rejects("device_not_supported"));
+    await assert.rejects(createCheckin(db, "alice", { source: "app", device_id: "device", operation_id: "device" }), rejects("device_not_supported"));
     const anonymous = createJournalRoutes(db);
     anonymous.onError((error, c) => c.json({ code: error instanceof DomainError ? error.code : "unexpected" }, error instanceof DomainError ? error.status as 400 : 500));
     assert.equal((await anonymous.request("/context")).status, 401);
-  } finally { await close(); }
-});
-
-test("concurrent saves either return one entry or a retryable storage error, then recover to one entry", async () => {
-  const { db, close } = await setup();
-  try {
-    const checkin = await pending(db, "concurrent");
-    const receipt = await confirm(db, checkin.id, "save-concurrent");
-    const saves = await Promise.allSettled(Array.from({ length: 4 }, () => commit(db, checkin.id, receipt)));
-    const entry = await commit(db, checkin.id, receipt);
-    for (const result of saves) {
-      if (result.status === "fulfilled") assert.equal(result.value.id, entry.id);
-      else assert.ok(result.reason instanceof DomainError && result.reason.code === "storage_unavailable" && result.reason.retryable);
-    }
-    assert.equal((await listJournal(db, "alice")).entries.length, 1);
-    assert.equal(entry.observations.length, 2);
-    assert.equal(entry.day_plans.length, 1);
+    await patchProfile(db, "alice", { expected_revision: 0, timezone: "Pacific/Kiritimati" });
+    assert.equal(journalDate("Pacific/Kiritimati", new Date("2026-10-24T23:00:00Z")), "2026-10-25");
   } finally { await close(); }
 });

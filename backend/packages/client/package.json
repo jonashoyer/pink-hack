@@ -1,0 +1,9 @@
+{
+  "name": "@backend/client",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "check-types": "tsc --noEmit", "test": "tsx --test src/*.test.ts" },
+  "devDependencies": { "@backend/config": "workspace:*", "@types/node": "catalog:", "typescript": "catalog:", "tsx": "^4.23.13" }
+}

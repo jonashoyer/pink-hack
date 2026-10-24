@@ -10,11 +10,16 @@ import { createJournalRoutes } from "./routes/journal";
 import { createVoiceRoutes, type VoiceConfig } from "./routes/voice";
 
 type Auth = ReturnType<typeof createAuth>;
-type AppConfig = VoiceConfig & { CORS_ORIGIN: string; BETTER_AUTH_URL: string };
+type AppConfig = VoiceConfig & { CORS_ORIGIN: string; CORS_ORIGINS?: string; BETTER_AUTH_URL: string };
 type Variables = { userId: string; requestId: string };
 
 export function createApp(db: Database, auth: Auth, config: AppConfig, providerFetch: typeof fetch = fetch) {
   const app = new Hono<{ Variables: Variables }>();
+  const origins = [...new Set([config.CORS_ORIGIN, new URL(config.BETTER_AUTH_URL).origin, ...(config.CORS_ORIGINS?.split(",").map((value) => value.trim()).filter(Boolean) ?? [])])];
+  for (const origin of origins) {
+    const parsed = new URL(origin);
+    if (!["http:", "https:"].includes(parsed.protocol) || parsed.origin !== origin) throw new Error("CORS origins must be exact HTTP origins.");
+  }
   app.use("*", requestId({ headerName: "" }));
   app.use("*", secureHeaders());
   app.use("/api/*", async (c, next) => {
@@ -22,7 +27,7 @@ export function createApp(db: Database, auth: Auth, config: AppConfig, providerF
     await next();
   });
   app.use("*", cors({
-    origin: config.CORS_ORIGIN,
+    origin: origins,
     credentials: true,
     allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
@@ -32,7 +37,7 @@ export function createApp(db: Database, auth: Auth, config: AppConfig, providerF
   // CORS governs response access, not permission to mutate records.
   app.use("/api/*", async (c, next) => {
     const origin = c.req.header("Origin");
-    if (origin && ![config.CORS_ORIGIN, new URL(config.BETTER_AUTH_URL).origin].includes(origin)) {
+    if (origin && !origins.includes(origin)) {
       throw new DomainError(403, "origin_rejected", "This browser origin is not allowed.");
     }
     await next();
