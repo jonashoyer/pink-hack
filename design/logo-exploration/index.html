@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kindalong · logo exploration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Nunito:wght@700;800&family=DM+Sans:wght@600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #fbf7f3; --ink: #3b2a2f; --muted: #7a656b; --rose: #a8476b;
+    --petal: #e8a0ae; --blush: #fde6ea; --line: #ecdfe0; --plum: #3b2a2f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.5 "DM Sans", system-ui, sans-serif; }
+  header { padding: 40px 48px 8px; }
+  header h1 { margin: 0; font: 600 28px "Fraunces", Georgia, serif; }
+  header p { margin: 6px 0 0; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; padding: 28px 48px 56px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; display: flex; flex-direction: column; }
+  .tag { padding: 14px 18px 0; font-weight: 600; font-size: 13px; letter-spacing: .04em; color: var(--muted); }
+  .tag b { color: var(--rose); }
+  .hero { display: grid; place-items: center; padding: 20px 0 8px; }
+  .hero svg { width: 132px; height: 132px; }
+  /* mark colour contexts */
+  .mark { --c1: var(--rose); --c2: var(--petal); --cut: #fff; color: var(--c1); }
+  .on-rose { --c1: #fff; --c2: #f6c9d1; --cut: var(--rose); }
+  .on-plum { --c1: #f6c9d1; --c2: var(--petal); --cut: var(--plum); }
+  .mono { --c1: var(--ink); --c2: var(--ink); --cut: #fff; }
+  .lockup { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 4px 0 18px; }
+  .lockup svg { width: 34px; height: 34px; }
+  .lockup span { font-size: 27px; color: var(--ink); letter-spacing: -0.01em; }
+  .f-serif { font-family: "Fraunces", Georgia, serif; font-weight: 600; }
+  .f-round { font-family: "Nunito", ui-rounded, system-ui, sans-serif; font-weight: 800; letter-spacing: -0.02em !important; }
+  .f-sans { font-family: "DM Sans", system-ui, sans-serif; font-weight: 600; letter-spacing: -0.03em !important; }
+  .row { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 14px; background: var(--blush); }
+  .tile { width: 64px; height: 64px; border-radius: 15px; display: grid; place-items: center; }
+  .tile svg { width: 40px; height: 40px; }
+  .tile.rose { background: var(--rose); }
+  .tile.plum { background: var(--plum); }
+  .tile.paper { background: #fff; border: 1px solid var(--line); }
+  .s48 { width: 48px; height: 48px; } .s24 { width: 24px; height: 24px; }
+  .copy { padding: 14px 18px 18px; font-size: 14px; }
+  .copy p { margin: 0 0 6px; }
+  .copy .trade { color: var(--muted); }
+  .rec { outline: 2px solid var(--rose); }
+  .rec .tag::after { content: " · recommended"; color: var(--rose); }
+</style>
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- A · Side by side: two companions, one leaning in -->
+  <symbol id="m-a" viewBox="0 0 64 64">
+    <circle cx="24" cy="17" r="8" fill="var(--c1)"/>
+    <path d="M9 58c0-17 6.5-28 15-28s15 11 15 28z" fill="var(--c1)"/>
+    <circle cx="43" cy="26" r="6.5" fill="var(--c2)" stroke="var(--cut)" stroke-width="3"/>
+    <path d="M30 58c0-13 5.5-22 13-22s13 9 13 22z" fill="var(--c2)" stroke="var(--cut)" stroke-width="3" stroke-linejoin="round"/>
+  </symbol>
+  <!-- B · Ribbon road: awareness ribbon whose tail becomes the road ahead -->
+  <symbol id="m-b" viewBox="0 0 64 64">
+    <path d="M12 56 36.5 25.5C41 19.5 39.5 8 32 8s-9 11.5-4.5 17.5L39 41c4.5 6 9 12 19 12" fill="none" stroke="var(--c1)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </symbol>
+  <!-- C · Listening bubble: refined speech bubble holding a voice -->
+  <symbol id="m-c" viewBox="0 0 64 64">
+    <path d="M17 11h30a10 10 0 0 1 10 10v17a10 10 0 0 1-10 10H29l-11 8.5V48h-1A10 10 0 0 1 7 38V21a10 10 0 0 1 10-10z" fill="none" stroke="var(--c1)" stroke-width="5" stroke-linejoin="round"/>
+    <path d="M23 26v7M32 21v17M41 25v9" stroke="var(--c2)" stroke-width="5" stroke-linecap="round"/>
+  </symbol>
+  <!-- D · Voice heart: a waveform that is a heart -->
+  <symbol id="m-d" viewBox="0 0 64 64">
+    <path d="M8 18v10M14 13v21M20 13v26M26 14v30M32 21v31M38 14v30M44 13v26M50 13v21M56 18v10" stroke="var(--c1)" stroke-width="4.4" stroke-linecap="round"/>
+  </symbol>
+  <!-- E · Kind k: a lowercase k whose arm leans in like a hug -->
+  <symbol id="m-e" viewBox="0 0 64 64">
+    <path d="M19 8v48" stroke="var(--c1)" stroke-width="7" stroke-linecap="round"/>
+    <path d="M46 14C35 19 26 28 26 35c0 6 9 14 21 21" fill="none" stroke="var(--c2)" stroke-width="7" stroke-linecap="round"/>
+  </symbol>
+  <!-- F · Held: a heart cradled by a cupped hand -->
+  <symbol id="m-f" viewBox="0 0 64 64">
+    <path d="M36 40C27 33.5 22 28.5 22 22.5a7 7 0 0 1 14-1.5 7 7 0 0 1 14 1.5c0 6-5 11-14 17.5z" fill="var(--c1)"/>
+    <path d="M9 24c0 18 10 30 27 30h19" fill="none" stroke="var(--c2)" stroke-width="5.5" stroke-linecap="round"/>
+  </symbol>
+  <!-- G · Two suns: a big and small arc rising side by side on one horizon -->
+  <symbol id="m-g" viewBox="0 0 64 64">
+    <path d="M8 44a12 12 0 0 1 24 0" fill="none" stroke="var(--c1)" stroke-width="5.5" stroke-linecap="round"/>
+    <path d="M41 44a7 7 0 0 1 14 0" fill="none" stroke="var(--c2)" stroke-width="5.5" stroke-linecap="round"/>
+    <path d="M6 52h52" stroke="var(--c1)" stroke-width="5.5" stroke-linecap="round"/>
+  </symbol>
+  <!-- H · Along: typographic k with an underline that walks beside it -->
+  <symbol id="m-h" viewBox="0 0 64 64">
+    <text x="32" y="44" text-anchor="middle" font-family="Fraunces, Georgia, serif" font-weight="600" font-size="50" fill="var(--c1)">k</text>
+    <path d="M10 54c14 4 30 4 44-3" fill="none" stroke="var(--c2)" stroke-width="5" stroke-linecap="round"/>
+  </symbol>
+</svg>
+
+<header>
+  <h1>Kindalong · eight logo directions</h1>
+  <p>Each shows the mark large, a lockup, app icons on rose / plum / white, then 48px and 24px. Pink/rose palette from the live landing. Drafts — pick one (or combine).</p>
+</header>
+
+<main class="grid" id="grid"></main>
+
+<script>
+const OPTIONS = [
+  ["a", "Side by side", "f-round", "Two companions, one leaning in. Says ‘along’ literally and warmly.", "Human figures can read as generic ‘community’ icons; needs the cut gap to stay legible at 24px."],
+  ["b", "Ribbon road", "f-serif", "The breast-cancer ribbon, drawn in one line, whose tail becomes the road ahead — life after treatment.", "Most on-mission; ribbon iconography is common, so the forward tail must carry it."],
+  ["c", "Listening bubble", "f-round", "Clean redraw of the current idea: a speech bubble holding a voice.", "Safest continuity, but speech bubbles are everywhere (chat apps)."],
+  ["d", "Voice heart", "f-sans", "Voice bars that form a heart — your voice, held kindly.", "Very ownable and works tiny; less explicitly about ‘along’."],
+  ["e", "Kind k", "f-serif", "A lowercase k whose arm curves in like an embrace.", "Strong monogram for an app icon; the hug reading is subtle."],
+  ["f", "Held", "f-serif", "A heart cradled in a cupped hand — care that stays with you.", "Instantly warm and readable; heart-and-hand is a familiar care motif."],
+  ["g", "Two suns", "f-round", "A big and a small sun rising together on one horizon — each day, side by side.", "Calm and hopeful; could read as hills or a weather app."],
+  ["h", "Along", "f-serif", "Type-led: a serif k with a line walking beside it.", "Elegant and quiet; least distinctive as a standalone symbol."],
+];
+const use = (id, cls = "") => `<svg class="mark ${cls}" viewBox="0 0 64 64" aria-hidden="true"><use href="#m-${id}"/></svg>`;
+document.getElementById("grid").innerHTML = OPTIONS.map(([id, name, font, idea, trade], i) => `
+  <article class="card${id === "d" ? " rec" : ""}">
+    <div class="tag"><b>${String.fromCharCode(65 + i)}</b> · ${name}</div>
+    <div class="hero">${use(id)}</div>
+    <div class="lockup">${use(id)}<span class="${font}">Kindalong</span></div>
+    <div class="row">
+      <div class="tile rose">${use(id, "on-rose")}</div>
+      <div class="tile plum">${use(id, "on-plum")}</div>
+      <div class="tile paper">${use(id)}</div>
+      ${use(id, "s48")}
+      ${use(id, "s24")}
+      ${use(id, "s24 mono")}
+    </div>
+    <div class="copy"><p>${idea}</p><p class="trade">${trade}</p></div>
+  </article>`).join("");
+</script>
+</body>
+</html>

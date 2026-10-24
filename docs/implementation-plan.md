@@ -4,7 +4,7 @@ provenance: "Unvetted Synthetic"
 
 # Direct voice Journal implementation plan
 
-For all frontend branding and layouts, use the single approved [Here With You design](../design/README.md) and [existing-project handoff](../design/lovable-handoff.md). The selected Home / Journal / Symptom navigation supersedes the older custom-page sidebar. This is a design requirement, not a claim that the external frontend has been updated. Backend and device work below retains its existing owners and contracts.
+For all frontend branding and layouts, use the single approved [Kindalong design](../design/README.md) and [existing-project handoff](../design/lovable-handoff.md). The selected Home / Journal / Symptom navigation supersedes the older custom-page sidebar. This is a design requirement, not a claim that the external frontend has been updated. Backend and device work below retains its existing owners and contracts.
 
 The developer removed held proposals, the staged check-in workflow, and Better Auth. Follow [PRD](../PRD.md), [direct contracts](app-structure.md), and [coordinator brief](flexible-pages-journal.md). The voice agent writes directly to Journal through POST/PATCH under the fixed shared user ID `demo-user`. Source inspection confirms exported `DEMO_USER_ID = "demo-user"` in [demo-owner.ts](../backend/apps/server/src/demo-owner.ts), used by `createApp(db, config, providerFetch?)` and device admission. Tests and deployment verification for this change remain pending.
 
@@ -38,7 +38,7 @@ The existing client is the integration base; auth-related signatures must follow
 
 ## 3. Wire the sole Lovable frontend
 
-Apply Here With You's approved Home / Journal / Symptom shell to the existing frontend, with the selected logo and shared theme on both the landing and app routes. Retain one Journal and existing BlockNote context-page editing through secondary settings. Direct page/journal editing calls the shared API. Normal dirty editor memory and failed-save recovery remain honest local editing behavior. Align daily-rating storage semantics and symptom scale metadata before wiring the new score and chart views; do not invent saved observations or add another database.
+Apply Kindalong's approved Home / Journal / Symptom shell to the existing frontend, with the Kindalong wordmark and previous pink/rose theme on both the landing and app routes. Retain one Journal and existing BlockNote context-page editing through secondary settings. Direct page/journal editing calls the shared API. Normal dirty editor memory and failed-save recovery remain honest local editing behavior. Align daily-rating storage semantics and symptom scale metadata before wiring the new score and chart views; do not invent saved observations or add another database.
 
 Remove inactive legacy check-in creation and staged review methods from the new voice path. Copy/adapt the private framework-independent client modules locally; do not assume an external npm publication.
 

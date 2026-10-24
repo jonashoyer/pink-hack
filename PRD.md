@@ -2,19 +2,19 @@
 provenance: "Unvetted Synthetic"
 ---
 
-# Here With You product requirements
+# Kindalong product requirements
 
 ## Approved interface direction
 
-The user's selected design is [Here With You](design/README.md): the listening-line logo, calm minimal Airy Sage palette, **Home / Journal / Symptom** navigation on desktop and phone, and a self-reported daily overall health rating. That document is the single visual specification and supersedes earlier Pages/Journal-only navigation and Today/Patterns mockups. These are approved requirements, not verified live features. The separate Lovable frontend still needs the [in-place migration](design/lovable-handoff.md); this repository contains design references and backend code, not its route components.
+The user's latest selected identity is [Kindalong](design/README.md), using the previous pink/rose theme. The Here With You name and Airy Sage palette are superseded. Kindalong branding is published on the existing landing and app at source `a3fc982cbf666e963c5eeef7eb10428dc984940b`; this rebrand did not change app behavior or layout. The selected listening-line geometry, **Home / Journal / Symptom** navigation, and self-reported daily overall health rating remain the approved interface requirements. That document is the single visual specification. The navigation, rating, and trend views still need the [in-place migration](design/lovable-handoff.md) and runtime verification; this repository contains design references and backend code, not the external frontend's route components.
 
 The developer's latest instruction removes Better Auth and uses one fixed server-owned user ID. The app opens directly into the shared demo journal, without accounts, sign-in, cookies, or user-session tokens. Direct voice-agent writing remains: no stored proposal, required draft review, or separate check-in approval workflow. [The coordinator brief](docs/flexible-pages-journal.md) records the corrections.
 
 ## Goal
 
-Build Here With You around daily voice notes, a Journal, symptom trends, and a self-reported daily health rating. Retain user-created context pages and one fixed Journal database. Each entry has flexible properties and an editable BlockNote page body. The assistant uses the person's pages to guide a conversation and writes new entries or changes existing content directly in response to their requests. A day plan is ordinary content inside the entry.
+Build Kindalong around daily voice notes, a Journal, symptom trends, and a self-reported daily health rating. Retain user-created context pages and one fixed Journal database. Each entry has flexible properties and an editable BlockNote page body. The assistant uses the person's pages to guide a conversation and writes new entries or changes existing content directly in response to their requests. A day plan is ordinary content inside the entry.
 
-The app supports people describing their own needs, including the [event's cancer-aftercare example](docs/event-context.md). Page names, questions, and journal properties are chosen from those needs rather than fixed product categories.
+The event demo centers on women living with the lasting effects of breast cancer treatment between oncology appointments. Its fictional composite Emma records fatigue, joint pain, worry and medication self-reports alongside everyday priorities. [The demo script](docs/demo-script.md) defines the breast-cancer case. Page names, questions and journal properties remain user-chosen; this demo does not turn them into fixed clinical categories.
 
 Lovable is the frontend. The existing Hono/Node backend provides page and Journal operations for the fixed demo user. Hosting is the existing [Vercel Pink Hack project](https://vercel.com/quasr/pink-hack); the existing Turso database is the sole deployed storage. Azure `gpt-live-1` remains the voice provider. There is no Notion product integration or new database deployment.
 
@@ -85,9 +85,9 @@ Production HTTPS and authenticated WSS are verified on the same `https://pink-ha
 
 The fixed-user backend deployment and no-token persistence checks are complete at source `e2d33ad`. The backend owner removed only the exact new synthetic test records/device claim after verification and preserved legacy data. No-login Lovable integration and physical device audio remain with their existing owners.
 
-The [independent voice audit](docs/demo-validation.md#voice-blockers-reported-by-the-readiness-auditor) found that callback retries with different generated tool-call IDs can create duplicate entries, and Stop does not yet persist a stopped backend conversation. The existing backend owner is implementing the fixes. REST retry checks and provider closure do not establish those voice guarantees. No integrated demo candidate is validated yet.
+The original [independent voice audit](docs/demo-validation.md#voice-blockers-reported-by-the-readiness-auditor) found callback retry and Stop defects. The backend owner has corrected and deployed them at source `1bf7d24`, with 64 tests and deployed replay/Stop/public CORS checks reported passing. The corrected Lovable client is published for initial human testing. A genuine spoken save and readback remain required to validate the integrated breast-cancer demo.
 
-The [draft demo story](docs/demo-script.md) uses composite Persona 1 to illustrate context-informed journaling and a day plan. It is a scenario and product hypothesis, not patient validation or evidence of clinical outcomes. Presentation remains part of Demo and must follow the validated candidate. The same journal can support emotional writing and other needs; the selected scenario does not narrow the product.
+The [breast cancer demo story](docs/demo-script.md) uses the current Notion composite Emma to join physical symptoms, emotions, a reported prescription and everyday plans in one record between oncology appointments. It is a synthetic scenario, not a patient account or evidence of clinical outcomes. Presentation follows the validated candidate; broader user-chosen journaling remains supported.
 
 ## Acceptance
 

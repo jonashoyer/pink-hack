@@ -4,6 +4,11 @@ provenance: "Unvetted Synthetic"
 
 # Native Atech voice
 
+Current status: toggle firmware is flashed and passes boot, WiFi and private
+backend authentication. The socket closes before session readiness, so physical
+GPT speech and Journal saving remain blocked. The latest source-only close
+visibility update is built and tested but not flashed. See `VERIFICATION.md`.
+
 Buildable ESP32-S3 firmware for the fixed Pink Hack service. This project is separate from the heard local PCM fallback in `../atech/`. All new files live here. No board, USB, serial port, provisioning endpoint, or paid voice session was accessed by the implementation worker.
 
 Hardware is `14port`, microphone `mic` on 1-2, speaker `spk` on 13-14, button `btn` on 3, and neopixel grid `led` on 4. SDK port mapping supplies every GPIO. Speaker volume defaults to `0.4f`.
@@ -18,7 +23,7 @@ atech build hardware/atech-voice
 sh hardware/atech-voice/scripts/test-drivers.sh
 ```
 
-Root alone may run `atech upload hardware/atech-voice` and SDK board/monitor/action commands. Upload rebuilds through the SDK. Do not edit `build/`, run another compiler during upload, or open a second serial owner. Generated firmware is `build/.pio/build/esp32-s3-devkitc-1/firmware.bin`. There is no secret-header generation or credential injection step. Normal builds contain only public host/CA configuration; WiFi and the device token stay onboard.
+Root alone may run `atech upload hardware/atech-voice` and SDK board/monitor/action commands. Upload rebuilds through the SDK. Do not edit `build/`, run another compiler during upload, or open a second serial owner. Generated firmware is `build/.pio/build/esp32-s3-devkitc-1/firmware.bin`. The current demo compiles WiFi details from an ignored, private `private_wifi.h`, as requested by the user. Without that file, saved WiFi and the onboard portal remain available. The device token stays in NVS; never put credentials in tracked files or logs.
 
 ## Onboard setup
 
@@ -26,7 +31,7 @@ Root alone may run `atech upload hardware/atech-voice` and SDK board/monitor/act
 2. If saved WiFi is missing or unreachable for 20 seconds, join the temporary open AP `PinkHack-Setup`. Open `http://192.168.4.1` if the captive portal does not open automatically. Select the WiFi network and enter its password directly in that local device portal. Neither chat nor a laptop configuration helper is involved.
 3. The portal offers WiFi and exit only. It expires after 180 seconds and shuts down when station WiFi connects. `voice_setup` deliberately opens it again. Saved WiFi remains onboard. No SSID or password appears in firmware diagnostics.
 4. After NTP time synchronization, the device reads its NVS token. If absent, it makes one verified HTTPS `POST {}` to `/api/v1/device/provision`. It validates `device_id:"demo"`, the credential revision, token shape, audio path, and every fixed audio format/limit field before storing the token. It accepts bounded decoded chunked or Content-Length JSON, at most 4,096 bytes. No provider or database key is used.
-5. The token is reused across connections and reboots as `Authorization: Bearer <token>` on the fixed WSS upgrade. It is never printed or placed in a URL. After `listening`, hold the physical button to speak, then release. Speaking to the device before readiness is not queued for later replay.
+5. The token is reused across connections and reboots as `Authorization: Bearer <token>` on the fixed WSS upgrade. It is never printed or placed in a URL. After `listening`, press the physical button once to record, then press again to finish the turn. Speaking before readiness is not queued for later replay.
 
 Expected setup events are `wifi_saved_connecting`, optionally `wifi_setup` with AP/address, `time_sync`, `device_provisioning`, `device_token_stored`, `wss_connecting`, `wss_connected`, `connecting`, and `listening`. Their exact ordering can vary when saved WiFi/token/time are already available. A provision operation is marked pending in NVS before the request. An ambiguous/failing response stops automatic provisioning; it does not repeatedly rotate the singleton token.
 
@@ -36,13 +41,13 @@ For `device_token_invalid_reset_required`, `provision_failed_reset_required`, or
 
 WSS is always `wss://pink-hack.vercel.app:443/api/v1/device/audio`. Binary data is 16,000 Hz mono signed PCM16LE, without WAV/base64 framing. Capture sends up to 1,024 bytes per packet, paced at 32,000 bytes/second on a phase-locked clock anchored to the first fresh packet. Deadlines advance by audio duration so task/socket overhead does not accumulate. Phase lag over 16 ms, or a send finishing past its next deadline, aborts rather than bursting through a backlog. Received frames must be nonempty, even, and at most 2,048 bytes.
 
-The microphone ring holds 16,384 bytes. It consumes each retained sample once, rejects the read spanning a PTT boundary, and drains two subsequent blocks to remove pre-PTT RX DMA audio. Allow roughly 96 ms after capture starts before speaking. Release freezes capture, drains existing ring and final partial packet at the same pace, then sends `audio_turn_end`. There is no endpoint/commit guarantee: the server adds its documented one second of paced silence. Overruns or input older than 450 ms abort the turn, discard pending speech, report an error, and require release before another turn.
+The microphone ring holds 16,384 bytes. It consumes each retained sample once, rejects the read spanning a PTT boundary, and drains two subsequent blocks to remove pre-PTT RX DMA audio. Allow roughly 96 ms after capture starts before speaking. The second press freezes capture, drains existing ring and final partial packet at the same pace, then sends `audio_turn_end`. There is no endpoint/commit guarantee: the server adds its documented one second of paced silence. Overruns or input older than 450 ms abort the turn, discard pending speech, report an error, and require release before another turn.
 
 The speaker queue holds 32,768 PCM bytes, plus at most one 1,024-byte task frame. Including stereo DMA, PCM-equivalent output buffering is at most 35,840 bytes. The pinned WebSocket library can additionally allocate a bounded 15 KiB received frame; the total remains below the 64,000-byte direction limit. Only the speaker task calls I2S write. Each write contains at most 64 mono samples and has a 5 ms timeout; partial/failing writes signal an error and flush. A received chunk older than 1,500 ms is stale and is rejected. Queue overflow never reports successful playback.
 
 `spk.stop()` takes the same mutex as the writer, advances its generation, drains the queue, and stops/zeros/restarts I2S DMA before returning. An old task-local chunk cannot write after that barrier. Main-loop stop can wait for the current small I2S write, but never for an entire audio chunk or TLS request. Network connection, portal, HTTPS, and WSS processing run on a separate task. Speaker physical activity includes queued PCM, task PCM, and a conservative 80 ms DMA drain deadline. It is an estimate of hardware drain, not evidence of human hearing.
 
-Pressing during physical output silences locally immediately and sends `interrupt`. Old binary is ignored until an ordered server `flush` followed by new `listening`. Every server flush clears queued/inflight speaker audio before another frame can be dispatched. If the button is still held after that barrier and readiness, fresh capture starts. Close, stop, cancel, and reconnect also clear capture/output. No microphone samples or transcripts are emitted on Serial or saved to files.
+Pressing during physical output silences locally immediately and sends `interrupt`. Old binary is ignored until an ordered server `flush` followed by new `listening`. Every server flush clears queued/inflight speaker audio before another frame can be dispatched. The recording toggle remains on after that barrier; fresh capture starts at readiness. Close, stop, cancel, and reconnect also clear capture/output. No microphone samples or transcripts are emitted on Serial or saved to files.
 
 The firmware sends only `start`, `audio_turn_end`, `interrupt`, `stop`, and `cancel`. `start` carries a stable UUID operation ID and an optional owned resume session ID, never a resumed `entry_id`. It relays audio; the server's direct voice agent writes Journal content/properties. There is no local ASR, special save phrase, draft, confirmation, or check-in path. Only server `saved` metadata pulses green and reports an entry/revision. Conversation continues after a save, and stopping never rolls back a saved entry.
 
@@ -59,7 +64,7 @@ The SDK owns Serial input and acknowledgements. Network diagnostics are queued a
 {"type":"event","payload":{"event_type":"state","key":"voice_saved","value":{"entry_id":"owned-entry-id","revision":1,"voice_session_id":"owned-session-id"}}}
 ```
 
-`voice_stats` reports readiness/PTT/physical output, WiFi/AP booleans, cumulative TX/RX/drop/I2S byte counts, queue bytes, microphone overruns, speaker faults, flush count/generation, completed turn count, connection attempt/retry delay, free heap, and dropped diagnostic count. `voice_identity` separately reports the stable operation/session IDs and last saved entry ID. Counters describe transport/I2S acceptance, not heard voice or verified Journal content. Root must reread each saved entry through the existing app/API to verify its contents.
+`voice_stats` reports readiness/button/physical output, WiFi/AP booleans, cumulative TX/RX/drop/I2S byte counts, queue bytes, microphone overruns, speaker faults, flush count/generation, completed turn count, connection attempt/retry delay, free heap, and dropped diagnostic count. `voice_identity` separately reports the stable operation/session IDs and last saved entry ID. Counters describe transport/I2S acceptance, not heard voice or verified Journal content. Root must reread each saved entry through the existing app/API to verify its contents.
 
 Custom SDK actions all take no value and receive `atechDone` acknowledgement that the request was accepted; completion arrives as events:
 

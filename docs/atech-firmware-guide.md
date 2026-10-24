@@ -25,14 +25,17 @@ atech monitor --port /dev/cu.usbmodem1101 --json
 Only one process may hold the USB port. Stop monitoring before another command.
 Upload success does not establish audible speech; use the physical test in the project README.
 
-The best voice-agent reference is the MIT [Clawd example](https://github.com/davidstalmarck/clawd-bot).
-It provides SDK firmware, a streaming microphone extension and a Python voice bridge.
-Its laptop bridge and Claude Code integration do not belong in our demo architecture.
-The example was source-inspected; its authors do not establish hardware audio acceptance.
+The official native reference is [Atech voice agent](https://github.com/atechdotdev/atech-voice-agent),
+pinned at `611e086feb56d4544948fae32149229a2f8e947f`. Its deferred-send pattern
+is adapted; its ElevenLabs protocol and hold gesture are not used. The MIT
+[Clawd repository](https://github.com/davidstalmarck/clawd-bot) supplies the
+streaming-microphone reference. No laptop bridge is used.
 
 The published SDK provides USB serial transport only. Native WiFi/WSS code is in
 [hardware/atech-voice](../hardware/atech-voice/README.md). Build and driver tests
-passed; initial physical startup crashed, and the revised build awaits USB recovery.
+passed. The flashed toggle build boots and authenticates over WiFi/WSS, but
+disconnects before backend session readiness. GPT speech and Journal saving
+on the physical device remain blocked.
 [Current evidence](../hardware/atech-voice/VERIFICATION.md) separates these results.
 Use the verified single Vercel backend at `https://pink-hack.vercel.app`,
 existing Turso storage and Azure Live provider. App and device share one fixed
@@ -44,3 +47,7 @@ Never print the returned device token or put it in a URL. Journal writes are dir
 creates/updates, without staged review/confirmation.
 
 Sources: [Atech SDK reference](https://atech.dev/llms.txt), [SDK on PyPI](https://pypi.org/project/atech/1.0.0a11/).
+
+Atech MCP is configured at `https://atech.dev/mcp` and was used for its overview
+and tool catalogue. [Hardware verification](../hardware/atech-voice/VERIFICATION.md)
+records the current build and the remaining blocker.

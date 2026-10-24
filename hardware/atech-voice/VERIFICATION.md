@@ -48,7 +48,7 @@ Root validated and uploaded the worker artifact above on 2026-10-24. SDK upload
 exited 0 and verified every written image hash. The board is ESP32-S3 revision
 0.2 with embedded 2 MB PSRAM; this firmware does not require PSRAM.
 
-Startup did not pass. SDK boot-report checks timed out at 5 and 12 seconds, and
+Initial startup did not pass. SDK boot-report checks timed out at 5 and 12 seconds, and
 `voice_status` received no acknowledgement. After physical reset, USB captured
 repeating Core 0 unhandled-debug-exception panics with a corrupted scheduler
 backtrace. The light grid stayed blue. No onboard provisioning or live speech
@@ -56,19 +56,66 @@ was reached.
 
 The microphone capture function has a compiled 5,248-byte frame against its
 6,144-byte task stack. Root changed only that stack to 8,192 bytes, matching the
-physically tested local microphone, and rebuilt successfully. Hardware retest
-is pending USB reconnection. This is a stack-exhaustion hypothesis, not yet a
-verified startup fix or physical voice result.
+physically tested local microphone. After USB returned and this change was
+flashed, startup and SDK acknowledgements passed without the observed panic.
 
 The revised artifact is SHA-256
 `c5f46a5f9ba49bb0bcf8fbff13e71008098ee468635231551d763e275adc0c3b`.
-Its build exited 0. The next upload failed because the Mac no longer detected
-an Atech USB device, despite reported reconnection with the original cable.
-This revised artifact has not reached the board. BOOT/FLASH-button availability
-is being confirmed before attempting documented ESP32-S3 recovery.
+Its build exited 0. One upload initially failed while USB was absent; a later
+SDK upload succeeded when the board reappeared. No BOOT button or guessed pins
+were needed. Native USB's 256-byte TX ring also truncated status JSON; a bounded
+4,096-byte ring and whole-line capacity check restored complete diagnostics.
 
 Backend owner verified terminal stop/cancel deployment
 `dpl_D4keCEU8SgHaPMTyzLEMuQdNKQ6u`, source `1bf7d24`, at the fixed
 `pink-hack.vercel.app` HTTPS/WSS host. It matches the firmware's identity
 retirement behavior. No device provisioning or provider audio probe accompanied
 that backend deployment.
+
+Latest flashed candidate SHA-256 is
+`aabfe86ef8817005a9b2cfe169faae7f7da2439450283ad122ac10f25457238b`.
+SDK build/upload and boot passed. It includes the requested recording toggle,
+25 ms button debounce, and deferred session sends after WebSocket maintenance.
+The latter pattern follows official `atechdotdev/atech-voice-agent` commit
+`611e086feb56d4544948fae32149229a2f8e947f`; it did not resolve the disconnect.
+WiFi details requested by the user are compiled from an ignored, mode-600 local
+header. No password or device token appears in tracked source or these logs.
+
+Physical WiFi and private-token WSS authentication passed, including token
+reuse after reboot. The session still closes after the initial `stopped:null`
+transport baseline, before `connecting` or `listening`. A bounded earlier
+capture recorded a 70-byte start control, successful `sendTXT`, no local
+close-pending/error/fragment branch, and a zero-length disconnect callback with
+no exposed close code. Main reported zero backend start receipts for the
+captured operations. PCM TX/RX remained zero; GPT speech and a Journal save
+have not been tested successfully. Automatic retries and the USB monitor are
+stopped. Temporary wire tracing and periodic realtime stats were removed;
+`voice_status` still requests a bounded readback. Coordination is Main only.
+
+Atech MCP was added with `codex mcp add atech --url https://atech.dev/mcp` and
+used through MCP initialize, tools/list and `atech_overview`. It is a read-only
+documentation server, not an alternate provider or a replacement device bridge.
+
+## Source-only close visibility
+
+Main requested a bounded local adaptation after the failed actual candidate.
+The installed WebSockets 2.7.2 release parser discarded a received Close frame's
+code/reason before `WStype_DISCONNECTED`. The pinned LGPL-2.1 library is now
+vendored under `vendor/WebSockets` with two no-op hooks before payload/socket
+cleanup. Encoder, handshake and debug settings remain unchanged.
+
+`voice_status` explicitly requests an additional `voice_close` record. It
+retains the first cause, distinguishes received Close from local failure,
+reports whether an RFC code exists, and captures the numeric ESP32 TLS error.
+Reasons are capped at 64 bytes and sanitized; credentials, bodies, long
+high-entropy strings and truncated text are redacted. Nothing is periodically
+published or sent to the backend by this change.
+
+`sh scripts/test-closure.sh` passed cause/cleanup preservation, peer/no-code,
+local transport, socket error, bounded text and redaction checks. SDK build
+passed in 22.13 seconds with 66,580 bytes RAM and 1,575,057 bytes flash.
+The source-only artifact SHA-256 is
+`ece227481eae0d74a3ab17aecb1cf8f8a28a219db431d3143bd180b331093d48`.
+It is not flashed and does not establish a functional fix. No new session,
+provisioning, token rotation, provider request or audio attempt accompanied it.
+The next permitted hardware action is Main's authorized actual E2E attempt.

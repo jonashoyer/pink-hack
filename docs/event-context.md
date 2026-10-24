@@ -29,10 +29,10 @@ Fields: project name, team first names, one-line problem, one-line solution, dem
 
 ## Current product notes
 
-The parent page proposes a digital companion for the physical and mental effects of cancer after treatment. Hormonal treatment tracking and chronic fatigue are possible challenges.
+The event check-in names the target explicitly: women living with the lasting effects of breast cancer treatment need support managing fatigue, symptoms and everyday life between appointments. The parent proposes a digital companion for physical and mental effects after treatment. The current research composite Emma describes joint pain, fatigue and worry that compound each other; ongoing hormone therapy is part of her example, not a requirement for every user.
 
 Ideas include a morning check-in, symptoms, readiness score, a day plan, and a Notion daily journal. The page says "Mediation tracker"; clarify whether this means medication or meditation. It also explores support before, during, and after treatment, without settling that broader scope.
 
 Atech notes propose microphone, speaker, push-to-talk, listening/thinking/attention LEDs, temperature and humidity intake, a possible mood dial, and a 160×80 color screen. These are proposals, not verified available modules or working features.
 
-The user-story page is blank. No product name or agreed demo workflow was found in these pages. Subsequent user clarification selects our own Lovable app and backend as the sole output sink, with "Notion + Apple Health-like" as the product direction. Voice/device ingestion location remains undecided. See [platform context](gpt_live_atech_lovable_context.md); no working integration is established.
+The current [user research](https://app.notion.com/p/403e7bbddae88073929cf47b41a161d8) includes the composite Emma, The Compounding Burden. [The demo](demo-script.md) now centers her breast-cancer recovery between appointments. Notion is research and documentation; user pages and Journal save through the shared backend to Turso and render in Lovable. The product name remains a team decision. Runtime readiness is recorded in [status](../status.md).

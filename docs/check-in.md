@@ -10,19 +10,19 @@ Collected on 2026-10-24 from the live Notion pages, the public check-in form, pr
 
 | Field | Answer | Evidence or remaining choice |
 | --- | --- | --- |
-| Project name | **Here With You** | Selected explicitly by the user in the design conversation; see [approved design](../design/README.md). Pink Hack remains the repository/event label. This does not submit or update the form. |
+| Project name | **Kindalong** | Latest explicit user selection; see [approved design](../design/README.md). Pink Hack remains the repository/event label. This does not submit or update the form. |
 | Team members, first names | Jonas, Klara, Chloé | Explicitly listed in Notion Event context. |
 | Problem, one line | Women living with the lasting effects of breast cancer treatment need support managing fatigue, symptoms, and everyday life between appointments. | Draft wording based on the Notion research and product brief. |
 | Solution, one line | A voice companion with a Lovable app and Atech interface for personalized check-ins, journaling, and manageable day plans. | Draft wording for the intended demo. The integrated app and Atech workflow has not been verified. |
-| Demo link, Lovable preview or published URL | **Coming later** | The developer will supply the demo link later. The integration-testing preview below remains a reference, not a selected submission destination. |
+| Demo link, Lovable preview or published URL | https://pink-hack-journal.lovable.app/ | Published Kindalong/pink-rose landing, available anonymously. The app route is `/app`; spoken save/readback and Stop remain unverified. This draft does not submit or update the form. |
 | Did you use Atech in your project? | Yes | The team's explicit selection in Notion. Working device audio remains unverified in project status. |
 | Is your solution breast cancer or cancer related? | Yes | Explicit selection in Notion, consistent with the product and research. |
 
-Current integration-testing preview:
+Current public landing:
 
-https://id-preview--ee916e8c-7f2f-4989-9c6e-cedcff1793b5.lovable.app
+https://pink-hack-journal.lovable.app/
 
-Lovable metadata reports project "Pink Hack Integration Testing", unpublished, scaffold ready at revision `369b6384898a390feaa381aca4ee246141901bb0`, and `agentFinished: false`. This verifies the preview URL's identity, not a working demo.
+Current Kindalong publication is source `a3fc982cbf666e963c5eeef7eb10428dc984940b`, Lovable deployment `bc2ab442-b0d5-4acc-a4c9-1cc6ad8b3b62`, at the same public landing and `/app` routes. Anonymous route HTTP, served pink/rose CSS, actual app image and visible Kindalong branding were verified. The fictional Emma, prototype/device concept and shared-demo notices remain. The app's behavior and layout were unchanged by the rebrand; approved layout migration and human spoken/Stop verification remain separate work. [Demo evidence](demo-validation.md) retains this and previous publication records. Submission status remains UNKNOWN; no form action was performed by this work.
 
 ## Submission requirements
 

@@ -2,90 +2,106 @@
 provenance: "Unvetted Synthetic"
 ---
 
-# Demo script
+# Kindalong breast cancer demo script
 
-**Draft. Not rehearsed against a validated candidate.** Every live step below must match [demo validation](demo-validation.md) before the pitch uses it. The working title is "Pink Hack"; the product name, presenter and submission link are still open.
+Selected identity: **Kindalong**, with the previous pink/rose theme for Lovable and presentation. The sole Lovable writer published source `a3fc982c`, deployment `bc2ab442`. The presentation uses the real [Kindalong landing](../presentation/assets/kindalong-landing-a3fc982c-desktop.png) and [app screenshot](../presentation/assets/kindalong-app-a3fc982c.webp).
 
-## Story
+Draft scenario. The case and seed data are synthetic. A spoken save becomes a demonstrated capability only after the human microphone test and canonical entry readback pass. [Current evidence](demo-validation.md) records that boundary.
 
-The person, "Anna", is a demo alias for the team's current Notion composite Persona 1 ("Emma, The Compounding Burden"), not a real patient. Details will be reconciled with the seed manifest ([demo-seed.md](demo-seed.md)). This is a scenario, not an observation of a patient. In the scenario, she is one to three years into hormone therapy after breast cancer, and her stiff hands and tiredness are worst in the mornings. She has no consistent record of these effects to bring to appointments. People around her assume that treatment ending means she is fine. Our hypothesis is that context-informed spoken journaling and a manageable day plan would help her organize that morning.
+## Why this matters
 
-The demo shows one morning:
+The event's problem is women living with the lasting effects of breast cancer treatment, managing fatigue, symptoms and everyday life between appointments. The demo makes breast cancer explicit in the person, her context, her spoken request and the saved record.
 
-1. **Her context.** She keeps two pages in her own words: what she wants to track, and what helps on hard days.
-2. **She talks.** She presses Talk and describes her morning. Then she asks the assistant to note it and suggest a gentle plan.
-3. **It writes the entry.** The assistant saves a Journal entry with her own properties. Its body contains her words and a Day plan built from her "what helps me" page.
-4. **She can see it.** The entry appears in the Journal, and she can open and edit it like any page.
+## Emma's story
 
-## Why this story fits the need
+Emma is a fictional composite grounded in the team's breast-cancer survivorship research, not a real patient. She has finished active hospital treatment for breast cancer and is eighteen months into ongoing prescribed hormone therapy. Joint pain, fatigue and worry compound each other. She wants to record difficult days in her own words for her next oncology appointment, while keeping everyday plans manageable.
 
-- It is the persona's top need: tracking joint pain and fatigue between appointments, in her words.
-- In this scenario, she finds speaking easier than typing with stiff hands. The plan uses the preferences she wrote in her context pages.
-- It shows the original part of the product: the assistant shapes the conversation and the entry from pages she wrote, not from a fixed questionnaire.
-- It makes no clinical claim. The assistant does not diagnose, score or suggest treatment changes.
+The demo follows one morning between appointments. She describes pain and fatigue, the medicine she reports taking, and how she feels about recovery. She asks the companion to save that account and organize a modest day plan using her own preferences. The saved entry remains an editable page in Lovable.
 
-This is a research-informed hypothesis. No affected person has used the product.
+For this fictional case, her existing prescription is letrozole 2.5 mg once daily. This is an illustrative prescription detail, not a recommendation, an observed patient's regimen, or a claim about what caused her symptoms. The companion records self-reports and is instructed not to diagnose, assess recurrence or change treatment.
 
-## Judging criteria
+Source: [current Notion user research](https://app.notion.com/p/403e7bbddae88073929cf47b41a161d8), composite "Emma, The Compounding Burden". Her name stays Emma throughout. The medicine detail and sister call are synthetic scenario choices. No research prevalence statistic or clinical outcome is used.
 
-| Criterion | What the pitch shows |
-| --- | --- |
-| Impact | A specific, recognizable gap after treatment, with a daily habit small enough to keep |
-| Working demo | Live talk → saved entry → opened in the app, on the submitted link |
-| Execution | Real storage, editable entries, direct saving; honest about what is not finished |
-| Originality | The person's own pages shape the conversation and the journal fields |
-| Pitch clarity | One person, one morning, one next step |
-| Bonuses | Cancer-related: yes. Atech: show only what the hardware owner has verified; label the rest as next. |
+## Seeded context pages
 
-## Demo content (synthetic, labeled)
+[The seed manifest](demo-seed.md) records canonical IDs, revisions, operation IDs and exact native BlockNote content. The revised case has three pages; the earlier two-page restriction is superseded by the user's breast-cancer case correction. Journal entries remain reserved for actual app or voice input.
 
-The seed worker creates these two pages in the shared demo space ([demo-seed.md](demo-seed.md)). This document does not write them. They contain preferences and tracking choices, not clinical data. Exact IDs are recorded in [demo validation](demo-validation.md).
+### My breast cancer recovery (demo)
 
-**What I want to track (demo)**
+> Synthetic demo page. Emma is a fictional composite, not a real patient.
+>
+> I have finished active hospital treatment for breast cancer. I am eighteen months into ongoing hormone therapy prescribed by my oncology team.
+>
+> For this fictional demo, my existing prescription is letrozole 2.5 mg once daily. Record only what I report taking; do not recommend a dose or a treatment change.
+>
+> Joint pain, fatigue and worry affect each other. A full night's rest does not always make the fatigue go away, and people often assume I am back to normal now that hospital treatment has ended.
+>
+> I want a short record of physical symptoms, feelings and everyday difficulties to read before my next oncology appointment. I do not want the companion to diagnose me or assess whether cancer has returned.
 
-> Synthetic demo page.
-> Each morning I'd like to note: how stiff my hands and knees feel from 0 to 10, my energy (low, okay, good), how I slept, and one thing I want to do today.
-> Keep it short. Use my words.
+### What I want to track (demo)
 
-**What helps me (demo)**
+> Synthetic demo page. This journal follows Emma's life after breast cancer treatment.
+>
+> Let me describe fatigue and hand or joint pain from 0 to 10, where 0 means none and 10 means most severe; how long I slept; and any worry or mood changes in my own words.
+>
+> If I mention medication, record the name, dose and time exactly as I report them. Do not assume that I took it or that it caused a symptom.
+>
+> Keep one thing that matters to me today alongside the symptoms. Make a short note I can revisit before my oncology follow-up. Use my words and keep physical and emotional experiences together.
 
-> Synthetic demo page.
-> A warm shower before I tackle the stairs. A short walk before lunch rather than later. Resting after lunch. Asking for help with jars and lids instead of pushing through. Keeping only one or two must-dos on a bad day.
+### What helps me (demo)
+
+> Synthetic demo page. These are Emma's personal coping preferences during breast cancer recovery, not medical advice.
+>
+> I prefer a quiet start and a warm shower before tackling the stairs. On a difficult morning, keep tasks short and leave room for rest.
+>
+> I ask my sister for help with jars and heavy shopping rather than pushing through painful hands. A short walk is optional when I feel up to it, not a task I have to complete.
+>
+> I like a rest after lunch and time to call my sister at three. When I feel worried, I want to note the feeling and any question for my oncology team, rather than try to solve it by changing medication.
+>
+> Keep today's plan to one or two priorities drawn from these preferences, and leave the rest of my journal entry intact when I make a correction.
+
+## Optional chart conventions
+
+The tracking page now names optional explicit numeric keys `fatigue`, `pain`, `nausea`, `appetite_loss` and `sleep_difficulty`, with severity 0 = none to 10 = most severe, higher worse. `overall_health` is a separate explicit daily rating, 1 = very poor to 10 = very good, higher better. `sleep_hours` stays uncharted. Preserve the medication note, emotions and flexible properties. Emma's request below provides fatigue, pain and sleep, and gives no overall-health rating; do not invent one.
+
+Charts select the latest valid explicitly recorded value per key and `journal_date`, with `created_at`/ID ties, full pagination and missing-day gaps. Explicit rating Save uses the latest valid rating source entry, otherwise the latest selected-day entry. Empty today can create an ordinary current-day Daily rating after explicit Save; empty historical days are not created. No illustrative history or rating is seeded. See [the design source rules](../design/README.md).
 
 ## Spoken request
 
-> "Good morning. My hands are really stiff today, maybe a seven, and I slept badly. Energy's low. My granddaughter is coming at three and I want to be up for that. Can you note this down and make me a gentle plan for today?"
+> "I'm Emma. Since breast cancer treatment ended, the fatigue hasn't gone away. Today it's six out of ten, my hand pain is seven, and I slept five hours. I'm worried about my next oncology appointment. I took my prescribed letrozole, 2.5 milligrams, at nine this morning. I'd like enough energy to call my sister at three. Please save this in my journal and make a manageable plan using my pages."
 
-Expected result, still to be confirmed in rehearsal: a Journal entry dated today with properties along the lines of stiffness 7, energy low, sleep poor. The body holds her words and a Day plan heading with a few checklist items drawn from "What helps me", such as a warm shower, rest after lunch, and keeping the afternoon free for three o'clock.
+Expected save, to be verified in the human test: one new entry recording fatigue 6, hand pain 7, sleep 5 hours, worry about the next oncology appointment, and the reported letrozole 2.5 mg at 09:00. Flexible property names are acceptable. Its body preserves Emma's words and includes a Day plan based on her preferences, such as a quiet start, optional help, rest after lunch and the three o'clock sister call. It must not invent a diagnosis, recurrence assessment or medication change.
 
-## Three-minute run
+Correction request for the same entry:
 
-Timing and gates follow [the deck outline](demo-deck-outline.md). Hook: "The hospital part is over. The side effects aren't." The composite may be called "Anna". Say "composite" out loud and show it on the slide.
+> "Change the hand pain to six. Keep the breast cancer recovery context, medication note, worry and the rest of the day plan unchanged."
 
-| Time | Beat | Gate |
-| --- | --- | --- |
-| 0:00–0:10 | Title and hook | — |
-| 0:10–0:35 | Problem: Anna, labeled as a composite, no statistics | — |
-| 0:35–0:55 | Product: her pages, she talks, an entry is written. Small print: "Instructed not to diagnose or advise on treatment." | G3 wording, G11 |
-| 0:55–1:05 | Live: open her two pages | G1, G2 |
-| 1:05–1:45 | Live: spoken request, then the saved entry appears | **G3**, G4, G5, G7 |
-| 1:45–2:05 | Live: open the entry and tick one Day plan checkbox (manual edit, no second voice call) | G9 |
-| 2:05–2:15 | Atech: show the device only as far as the hardware owner has verified; otherwise say connecting it is next | G8 |
-| 2:15–2:35 | What's real and what isn't, including the shared demo space | — |
-| 2:35–3:00 | Next step, labeled as a proposal | — |
+## Three-minute pitch
 
-Until G3 passes on the corrected backend and stop-aware client, every voice-write line uses the outline's "designed to" wording, and the 1:05–1:45 beat is not run live.
+| Time | Beat |
+| --- | --- |
+| 0:00-0:10 | "Breast cancer treatment can end before its effects do." |
+| 0:10-0:35 | Introduce Emma as a fictional composite. Explain the physical and emotional burden between appointments. |
+| 0:35-0:55 | Show her breast cancer recovery page, tracking choices and personal coping preferences. |
+| 0:55-1:45 | Start voice and give the request above only when the corrected app is ready for the coordinated test. |
+| 1:45-2:05 | Show the new saved entry, medication self-report and Day plan; reload it. A prior rehearsal entry must be labelled as such. |
+| 2:05-2:15 | Show Atech only to the extent its owner has verified real device speech to Journal. |
+| 2:15-2:35 | State what was demonstrated, that the space is shared, and that there has been no patient trial. |
+| 2:35-3:00 | Propose testing the daily journaling workflow with women living with effects of breast cancer treatment. |
 
-## Before going on stage (16:15)
+Use "designed to" for voice-writing claims until the microphone test passes. The three-minute limit and the public working-app requirement come from [event context](event-context.md).
 
-- Open the submitted link from a signed-out browser. It must reach the working app, not only the landing page.
-- The demo space is public and shared. Check the Journal and both demo pages for visitor changes. Delete nothing without the demo owner's decision.
+## What confirms the demo
 
-## Fallback
+- All three saved context pages render in [the public app](https://pink-hack-journal.lovable.app/app).
+- Real speech creates one canonical Journal entry using those pages. Record its ID, revision, transcript and timing.
+- The entry contains both physical and emotional self-reports, plus a plan traceable to the preferences.
+- Reload keeps the entry. A correction preserves unrelated content; callback retry does not duplicate it.
+- Stop retires backend writing. Provider closure and backend retirement are reported separately.
+- No medicine dose or clinical recommendation is generated from symptoms.
 
-- **Voice fails after the path was validated:** play the recording of that validated run (G10) and say it is a recording.
-- **Path was never validated:** say voice writing isn't working end to end yet, and show only the validated parts: the demo pages (G2) and editing (G9). No recording stands in for validation.
+## Fallback and submission
 
-## Outline suggestions
+A fallback recording must come from an actually validated run and be labelled as a recording. Without a validated voice run, show the real pages and manual editing and say voice remains unproven.
 
-All seven are accepted, using the corrected wording: the hook, the optional name "Anna", the checkbox beat, the Atech rule, the split fallback, the 16:15 check, and that the link must reach the app.
+The [landing page](https://pink-hack-journal.lovable.app/) and [working app](https://pink-hack-journal.lovable.app/app) are separate checks. Submission status is unknown. Product name is Kindalong. Presenter and who drives the laptop remain team decisions. Team names in event context are Jonas, Klara and Chloé.

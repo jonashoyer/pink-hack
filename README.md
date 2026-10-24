@@ -2,13 +2,13 @@
 provenance: Unvetted Synthetic
 ---
 
-# Here With You
+# Kindalong
 
 Project for The Pink Hack, Build for Impact. Started from the [hckthn template](https://github.com/jonashoyer/hckthn).
 
-**Approved interface:** [Here With You design](design/README.md) is the single source for branding, desktop/phone layouts, Home / Journal / Symptom navigation, and daily ratings. It includes exactly four screen references and one selected logo. [Frontend handoff](design/lovable-handoff.md) explains how to apply it to the existing Lovable project. Superseded designs are recoverable from Git checkpoint `5f9ba1c`.
+**Approved interface:** [Kindalong design](design/README.md) selects the previous pink/rose theme and retains desktop/phone Home / Journal / Symptom navigation and daily ratings. Its four earlier screenshots and logo sheet are layout/geometry references with superseded branding. [Frontend handoff](design/lovable-handoff.md) explains how to apply it to the existing Lovable project. Superseded designs are recoverable from Git checkpoint `5f9ba1c`.
 
-The existing [landing](https://pink-hack-journal.lovable.app/) and [app](https://pink-hack-journal.lovable.app/app) are routes in the separate Lovable frontend. This repository does not contain that frontend's components. Pushing the design files here does not automatically restyle or publish those pages; the public browser audit still found Pink Hack branding. The repository/package and deployment identifiers may remain `pink-hack` while the product name is Here With You.
+The existing [landing](https://pink-hack-journal.lovable.app/) and [app](https://pink-hack-journal.lovable.app/app) are routes in the separate Lovable frontend. This repository does not contain that frontend's components. The sole Lovable writer published Kindalong with the previous pink/rose theme at source `a3fc982cbf666e963c5eeef7eb10428dc984940b`, deployment `bc2ab442-b0d5-4acc-a4c9-1cc6ad8b3b62`. Publication and focused checks are writer-reported; real local screenshots are available in the presentation assets. This branding publication does not establish spoken voice or device integration. Repository/package and deployment identifiers remain `pink-hack`.
 
 - [Hackathon skill](.agents/skills/hackathon/SKILL.md): coordinate main and worker threads, with guides for the [app scaffold and Vercel deploy](.agents/skills/hackathon/references/scaffold.md), [branding](.agents/skills/hackathon/references/branding.md), and a reusable HTML presentation.
 - [Hackathon playbook](docs/hackathon_playbook.md): a flexible thought scaffold for setup, ideas, planning, building, and the demo.

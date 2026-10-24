@@ -7,15 +7,31 @@
 #include <atomic>
 #include "microphone.h"
 #include "speaker.h"
+#include "closure_record.h"
 
 // The pinned library may reconnect inside loop() immediately after detecting
 // loss. Hold its internal retry clock; VoiceTransport alone starts attempts.
 class OneAttemptWebSocket : public WebSocketsClient {
 public:
     void armAttempt() {
+        _closure = {};
         setReconnectInterval(0x7fffffffUL);
         _lastConnectionFail = millis() - 0x7fffffffUL;
     }
+    const ClosureRecord& lastClosure() const { return _closure; }
+protected:
+    void disconnectObserved(WSclient_t*, uint16_t code, const uint8_t* reason, size_t length, bool received) override {
+        _closure.capture(code, reason, length, received);
+    }
+    void socketDisconnectObserved(WSclient_t* client, const char* reason) override {
+        int error = 0; bool captured = false;
+#if defined(ESP32) && defined(HAS_SSL)
+        if (client->isSSL && client->ssl) { char ignored[8]; error = client->ssl->lastError(ignored, sizeof(ignored)); captured = true; }
+#endif
+        _closure.socket(error, captured, client->cCode, reason);
+    }
+private:
+    ClosureRecord _closure;
 };
 
 class VoiceTransport {
@@ -59,6 +75,7 @@ private:
     QueueHandle_t _events = nullptr;
     std::atomic<Indicator> _indicator{Indicator::Connecting};
     std::atomic<bool> _held{false}, _ready{false}, _captureActive{false}, _endPending{false};
+    std::atomic<bool> _recordRequested{false};
     std::atomic<bool> _awaitFlush{false}, _needRelease{false}, _enabled{true};
     std::atomic<bool> _interruptRequested{false}, _reconnectRequested{false}, _setupRequested{false}, _resetRequested{false}, _reportRequested{false}, _retireRequested{false};
     std::atomic<int> _stopRequested{0}; // 1=stop, 2=cancel.
@@ -69,6 +86,7 @@ private:
     Preferences _prefs;
     String _token, _authHeader, _session, _operation, _lastEntry;
     bool _attempt = false, _connected = false, _closePending = false, _leaseBusy = false, _invalidToken = false;
+    bool _startPending = false;
     bool _portal = false, _portalExhausted = false, _nvsReady = false, _flushSeen = false;
     uint32_t _portalSince = 0, _wifiSince = 0, _wifiRetryAt = 0, _nextAttempt = 0;
     uint32_t _openedAt = 0, _readyDeadline = 0, _timeSince = 0, _lastReport = 0, _outputSettledAt = 0;

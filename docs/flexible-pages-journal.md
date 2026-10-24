@@ -4,7 +4,7 @@ provenance: "Unvetted Synthetic"
 
 # Flexible pages and journal correction
 
-The later user-approved [Here With You design](../design/README.md) supersedes this brief's original primary navigation: use Home / Journal / Symptom, retaining context pages through secondary settings. Its daily self-reported health rating and symptom trends extend the interface over the existing Journal model. The direct-write, fixed-user, BlockNote, and storage contracts below remain in force. The new visual requirements are not verified deployed features.
+The later user-approved [Kindalong design](../design/README.md) supersedes this brief's original primary navigation: use Home / Journal / Symptom, retaining context pages through secondary settings. Its daily self-reported health rating and symptom trends extend the interface over the existing Journal model. The direct-write, fixed-user, BlockNote, and storage contracts below remain in force. The new visual requirements are not verified deployed features.
 
 The developer's 2026-10-24 instructions supersede the fixed Today, Patterns, About me, personal/medical page types, fixed observation metrics, and separate day-plan records in earlier designs. They also remove held journal proposals and a mandatory prepare/confirm/commit path. The latest correction removes Better Auth and uses one fixed server-owned demo user. The voice agent writes directly when the user asks. This brief records the requested behavior and minimal contract, not completed implementation.
 

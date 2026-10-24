@@ -79,23 +79,31 @@ VoiceTransport::Indicator VoiceTransport::indicator() const {
     return _indicator.load();
 }
 void VoiceTransport::tick(bool held) {
+    static bool rawButton = false, stableButton = false;
+    static uint32_t buttonChangedAt = 0;
+    if (held != rawButton) { rawButton = held; buttonChangedAt = millis(); }
+    if (millis() - buttonChangedAt >= 25) stableButton = rawButton;
+    held = stableButton;
     bool before = _held.exchange(held);
-    if (!held) {
-        _needRelease = false;
-        if (_captureActive.exchange(false)) {
+    if (!held) _needRelease = false;
+    bool pressed = held && !before && !_needRelease;
+    if (pressed) {
+        bool recording = !_recordRequested.load();
+        _recordRequested = recording;
+        if (!recording && _captureActive.exchange(false)) {
             _mic->endStream(); _endPending = true; _ready = false;
             state("capture_draining");
         }
     }
-    if (held && !before && _speaker && _speaker->isPlaying()) {
+    if (pressed && _recordRequested && _speaker && _speaker->isPlaying()) {
         // Local silence does not wait for the network task or a provider event.
         _ready = false; _awaitFlush = true; _interruptRequested = true;
-        flushLocal(); state("interrupt_pending");
+        flushLocal(); _recordRequested = true; state("interrupt_pending");
     }
-    if (held && _enabled && _ready && !_awaitFlush && !_needRelease && !_endPending && !_captureActive && !_speaker->isPlaying()) {
+    if (_recordRequested && _enabled && _ready && !_awaitFlush && !_needRelease && !_endPending && !_captureActive && !_speaker->isPlaying()) {
         if (_mic->startStream()) {
             ++_turnSerial; _captureActive = true; state("capturing");
-        } else { error("capture_start_failed"); _needRelease = true; }
+        } else { error("capture_start_failed"); _recordRequested = false; _needRelease = true; }
     }
     Event event;
     // SDK owns Serial reads and built-in button events. All network logs drain here.
@@ -106,6 +114,7 @@ void VoiceTransport::tick(bool held) {
         xQueueReceive(_events, &event, 0) == pdTRUE) Serial.println(event.line);
 }
 void VoiceTransport::flushLocal() {
+    _recordRequested = false;
     _ready = false; _captureActive = false; _endPending = false; ++_discardSerial;
     if (_mic) _droppedBytes.fetch_add(_mic->pendingSamples()*2);
     if (_speaker) _droppedBytes.fetch_add(_speaker->queuedBytes());
@@ -155,6 +164,21 @@ void VoiceTransport::reportFromTask() {
     d["attempt"] = _attempts; d["retry_ms"] = (int32_t)(_nextAttempt-millis()) > 0 ? _nextAttempt-millis() : 0;
     d["free_heap"] = ESP.getFreeHeap(); d["diag_dropped"] = _diagDropped.load();
     emit("voice_stats", d);
+    const auto& record = _ws.lastClosure();
+    char reason[65];
+#ifdef PINKHACK_WIFI_PASSWORD
+    record.safeReason(reason, sizeof(reason), _token.c_str(), PINKHACK_WIFI_PASSWORD);
+#else
+    record.safeReason(reason, sizeof(reason), _token.c_str());
+#endif
+    StaticJsonDocument<512> close;
+    close["observed"] = record.observed;
+    close["origin"] = !record.observed ? "none" : record.received ? "received_close" : "local_transport";
+    close["code_present"] = record.codePresent; close["code"] = record.code;
+    close["reason"] = reason; close["reason_bytes"] = record.reasonBytes; close["truncated"] = record.truncated;
+    close["socket_error_captured"] = record.socketErrorCaptured; close["socket_error"] = record.socketError;
+    close["http_status"] = record.httpStatus;
+    emit("voice_close", close);
     StaticJsonDocument<512> identity;
     identity["operation_id"] = _operation; identity["voice_session_id"] = _session; identity["last_entry_id"] = _lastEntry;
     emit("voice_identity", identity);
@@ -191,7 +215,7 @@ void VoiceTransport::scheduleRetry(bool busy) {
 }
 void VoiceTransport::closeSocket(bool retry) {
     flushLocal(); clearTx();
-    _connected = false; _attempt = false; _closePending = false;
+    _connected = false; _attempt = false; _closePending = false; _startPending = false;
     _awaitFlush = false; _flushSeen = false; _readyDeadline = 0;
     _needRelease = true; // Never resume/replay an interrupted held utterance after loss.
     _ws.disconnect();
@@ -208,7 +232,8 @@ bool VoiceTransport::sendControl(const char* type) {
         // Resume never carries entry_id. The device relays audio, not write tools.
     }
     char buffer[512]; size_t n = serializeJson(d, buffer, sizeof(buffer));
-    if (!_connected || d.overflowed() || n >= sizeof(buffer) || !_ws.sendTXT(buffer, n)) {
+    bool sent = _connected && !d.overflowed() && n < sizeof(buffer) && _ws.sendTXT(buffer, n);
+    if (!sent) {
         error("control_send_failed"); _closePending = true; return false;
     }
     return true;
@@ -228,7 +253,7 @@ void VoiceTransport::openSocket() {
 }
 void VoiceTransport::websocketEvent(WStype_t type, uint8_t* payload, size_t length) {
     if (type == WStype_CONNECTED) {
-        _connected = true; state("wss_connected"); sendControl("start"); return;
+        _connected = true; _startPending = true; state("wss_connected"); return;
     }
     if (type == WStype_DISCONNECTED) {
         _connected = false; _ready = false; flushLocal(); clearTx(); _closePending = true;
@@ -245,7 +270,7 @@ void VoiceTransport::websocketEvent(WStype_t type, uint8_t* payload, size_t leng
         }
         if (!_speaker->enqueuePCM(payload, length)) { _droppedBytes.fetch_add(length); abortTurn("output_queue_or_format_error"); return; }
         // Provider output during a held capture is interrupted before further PCM.
-        if (_captureActive) { _interruptRequested = true; _awaitFlush = true; flushLocal(); return; }
+        if (_captureActive) { _interruptRequested = true; _awaitFlush = true; flushLocal(); _recordRequested = true; return; }
         _rxBytes.fetch_add(length); _ready = false; _outputSettledAt = millis();
         _indicator = Indicator::Speaking;
         return;
@@ -262,7 +287,9 @@ void VoiceTransport::receiveControl(const uint8_t* payload, size_t length) {
     if (!strcmp(type, "flush")) {
         if (!d["generation"].is<uint32_t>() || d["generation"].as<uint32_t>() <= _generation) { abortTurn("invalid_flush_generation"); return; }
         // Synchronous barrier completes before WebSockets dispatches the next frame.
-        flushLocal(); clearTx(); _generation = d["generation"]; _flushSeen = true;
+        bool resumeRecording = _recordRequested.load() && _awaitFlush.load();
+        flushLocal(); clearTx(); _recordRequested = resumeRecording;
+        _generation = d["generation"]; _flushSeen = true;
         state("flush_applied"); return;
     }
     if (!strcmp(type, "state")) {
@@ -289,6 +316,9 @@ void VoiceTransport::receiveControl(const uint8_t* payload, size_t length) {
         } else if (!strcmp(serverState, "error")) {
             _ready = false; _indicator = Indicator::Error; flushLocal(); _closePending = true; state("server_error");
         } else if (!strcmp(serverState, "stopped")) {
+            // A newly authenticated socket announces stopped with no session
+            // before processing start. It is not a terminal conversation.
+            if (!*session) { _ready = false; state("waiting_for_start"); return; }
             _enabled = false; flushLocal(); retireIdentity(); _closePending = true;
             _indicator = Indicator::Stopped; state("stopped");
         } else abortTurn("invalid_server_state");
@@ -437,7 +467,7 @@ void VoiceTransport::network() {
     state("wifi_saved_connecting");
     while (true) {
         uint32_t now = millis();
-        if (_reportRequested.exchange(false) || now-_lastReport >= 5000) { reportFromTask(); _lastReport = now; }
+        if (_reportRequested.exchange(false)) reportFromTask();
         int stop = _stopRequested.exchange(0);
         if (stop) {
             if (_connected) sendControl(stop == 2 ? "cancel" : "stop");
@@ -481,6 +511,9 @@ void VoiceTransport::network() {
         if (!_attempt && (int32_t)(now-_nextAttempt) >= 0) openSocket();
         if (_attempt) _ws.loop(); // All blocking TLS/socket calls belong to this task.
         if (_closePending) { closeSocket(true); vTaskDelay(pdMS_TO_TICKS(5)); continue; }
+        // Official voice-agent pattern: send deferred session control after
+        // WebSocket maintenance has returned, never inside its callback.
+        if (_startPending && _connected) { _startPending = false; sendControl("start"); }
         if (_interruptRequested.exchange(false)) {
             _awaitFlush = true; _flushSeen = false; clearTx();
             _readyDeadline = millis()+READY_TIMEOUT_MS;

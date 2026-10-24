@@ -2,7 +2,7 @@ import { abortConversationAgents } from "../voice/delegations";
 import { createHash, randomUUID } from "node:crypto";
 import type { Database } from "@backend/db";
 import { browserVoiceSessions as voiceSessions, browserVoiceToolCalls as voiceToolCalls } from "@backend/db/schema/voice";
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { DomainError } from "../domain/errors";
@@ -36,8 +36,6 @@ export function createVoiceRoutes(db: Database, config: VoiceConfig, providerFet
     await db.transaction(async (tx) => {
       const [existing] = await tx.select().from(voiceSessions).where(and(eq(voiceSessions.ownerId, ownerId), eq(voiceSessions.operationId, input.operation_id)));
       if (existing) throw new DomainError(409, "voice_operation_used", "This voice initialization was already attempted. Reconnect using a new operation ID; do not replay the SDP.");
-      const attempts = await tx.select({ id: voiceSessions.id }).from(voiceSessions).where(and(eq(voiceSessions.ownerId, ownerId), gte(voiceSessions.createdAt, Date.now() - 3600000))).limit(5);
-      if (attempts.length >= 5) throw new DomainError(429, "voice_limit", "The hourly voice initialization limit has been reached.");
       await tx.insert(voiceSessions).values({ id: rowId, ownerId, operationId: input.operation_id, state: "creating", createdAt: Date.now() });
     });
     let conversationId: string | undefined;
