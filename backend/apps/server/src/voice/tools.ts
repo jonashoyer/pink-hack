@@ -1,3 +1,4 @@
+import { agentMutationId, type AgentExecution } from "../domain/agent-execution";
 import { createHash } from "node:crypto";
 import type { Database } from "@backend/db";
 import { z } from "zod";
@@ -17,9 +18,10 @@ const definitions = [
   { name: "update_journal_entry", description: "Immediately update an owned entry requested by the user at its expected revision. Read and merge current content and properties first, preserving unrelated blocks and values. Omitted fields remain unchanged.", schema: updateInput },
 ];
 export const journalToolDefinitions = definitions.map(({ name, description, schema }) => ({ name, description, parameters: z.toJSONSchema(schema, { io: "input", reused: "ref" }) }));
-export async function dispatchJournalTool(db: Database, ownerId: string, voiceSessionId: string, name: string, input: unknown, toolCallId?: string) {
+export async function dispatchJournalTool(db: Database, ownerId: string, voiceSessionId: string, name: string, input: unknown, toolCallId?: string, execution?: AgentExecution, signal?: AbortSignal) {
   await getConversationContext(db, ownerId, voiceSessionId);
   const operationId = () => {
+    if (execution) return agentMutationId(ownerId, voiceSessionId, execution.delegationId, execution.mutationIndex);
     if (!toolCallId || toolCallId.length > 500) throw new DomainError(422, "missing_tool_action", "A stable application tool action ID is required.");
     return createHash("sha256").update(JSON.stringify([ownerId, voiceSessionId, name, toolCallId])).digest("hex");
   };
@@ -27,10 +29,10 @@ export async function dispatchJournalTool(db: Database, ownerId: string, voiceSe
     case "get_context": validate(empty, input); return getConversationContext(db, ownerId, voiceSessionId);
     case "get_page": return getPage(db, ownerId, validate(pageId, input).page_id);
     case "get_journal_entry": return getJournalEntry(db, ownerId, validate(entryId, input).entry_id);
-    case "create_journal_entry": return createJournalForConversation(db, ownerId, voiceSessionId, { ...validate(createInput, input), operation_id: operationId() });
+    case "create_journal_entry": return createJournalForConversation(db, ownerId, voiceSessionId, { ...validate(createInput, input), operation_id: operationId() }, execution, signal);
     case "update_journal_entry": {
       const { entry_id, ...patch } = validate(updateInput, input);
-      return patchJournalForConversation(db, ownerId, voiceSessionId, entry_id, { ...patch, operation_id: operationId() });
+      return patchJournalForConversation(db, ownerId, voiceSessionId, entry_id, { ...patch, operation_id: operationId() }, execution, signal);
     }
     default: throw new DomainError(422, "unknown_tool", "The requested tool is not available.");
   }

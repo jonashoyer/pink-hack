@@ -1,3 +1,4 @@
+import { abortConversationAgents } from "../voice/delegations";
 import { createHash, randomUUID } from "node:crypto";
 import type { Database } from "@backend/db";
 import { browserVoiceSessions as voiceSessions, browserVoiceToolCalls as voiceToolCalls } from "@backend/db/schema/voice";
@@ -5,7 +6,7 @@ import { and, eq, gte } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import { DomainError } from "../domain/errors";
-import { createVoiceConversation, getConversationContext, recordIdSchema, validate } from "../domain/journal";
+import { createVoiceConversation, getConversationContext, stopVoiceConversation, recordIdSchema, validate } from "../domain/journal";
 import { dispatchJournalTool, journalToolDefinitions } from "../voice/tools";
 import { buildBackendInstructions, conversationInstructions } from "../voice/prompts";
 import { plausibleLiveSdp, readLiveAnswer, voiceProvider } from "../voice/provider";
@@ -39,8 +40,10 @@ export function createVoiceRoutes(db: Database, config: VoiceConfig, providerFet
       if (attempts.length >= 5) throw new DomainError(429, "voice_limit", "The hourly voice initialization limit has been reached.");
       await tx.insert(voiceSessions).values({ id: rowId, ownerId, operationId: input.operation_id, state: "creating", createdAt: Date.now() });
     });
+    let conversationId: string | undefined;
     try {
       const conversation = await createVoiceConversation(db, ownerId, { source: "app", operation_id: createHash("sha256").update(`voice:${ownerId}:${input.operation_id}`).digest("hex"), ...(input.entry_id ? { entry_id: input.entry_id } : {}) });
+      conversationId = conversation.id;
       const context = await getConversationContext(db, ownerId, conversation.id);
       await db.update(voiceSessions).set({ conversationId: conversation.id }).where(eq(voiceSessions.id, rowId));
       const session = provider.delegation === "client"
@@ -53,19 +56,34 @@ export function createVoiceRoutes(db: Database, config: VoiceConfig, providerFet
         headers,
         body: JSON.stringify({ session, transport: input.transport }),
         cache: "no-store", redirect: "error",
-        signal: AbortSignal.timeout(20000),
+        signal: AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(20000)]),
       });
       const result = await readLiveAnswer(response, provider);
+      if (c.req.raw.signal.aborted) throw new DomainError(408, "voice_initialization_canceled", "Voice startup was canceled.");
       await db.update(voiceSessions).set({ state: "active", providerSessionId: result.session.id }).where(eq(voiceSessions.id, rowId));
       return c.json({ id: conversation.id, voice_session_id: conversation.id, provider: provider.provider, model: provider.model, delegation: provider.delegation, ...result }, 201);
     } catch (error) {
+      if (conversationId) await stopVoiceConversation(db, ownerId, conversationId);
       await db.update(voiceSessions).set({ state: "failed" }).where(eq(voiceSessions.id, rowId));
       if (error instanceof DomainError) throw error;
       throw new DomainError(502, "voice_initialization_incomplete", "Voice initialization did not complete. It was not automatically retried.");
     }
   });
 
-  // The authenticated client relays completed Live function calls here, then
+  routes.post("/voice/sessions/:id/stop", async c => {
+    const raw = await c.req.text();
+    if (raw.trim()) {
+      let value: unknown;
+      try { value = JSON.parse(raw); } catch { throw new DomainError(422,"invalid_input","Stop accepts an empty JSON object."); }
+      validate(z.object({}).strict(),value);
+    }
+    const ownerId = c.get("userId");
+    abortConversationAgents(db,ownerId,c.req.param("id"));
+    const conversation = await stopVoiceConversation(db,ownerId,c.req.param("id"));
+    return c.json({voice_session_id:conversation.id,state:"stopped" as const});
+  });
+
+  // The client relays completed Live function calls here, then
   // returns this output over its Live data channel. Writes use the same owned services.
   routes.post("/voice/sessions/:id/tools", async (c) => {
     const input = validate(toolInput, await jsonBody(c.req.raw));
@@ -73,13 +91,14 @@ export function createVoiceRoutes(db: Database, config: VoiceConfig, providerFet
     const [voice] = await db.select().from(voiceSessions).where(and(eq(voiceSessions.conversationId, c.req.param("id")), eq(voiceSessions.ownerId, ownerId), eq(voiceSessions.state, "active")));
     if (!voice || !voice.conversationId) throw new DomainError(404, "not_found", "Voice session was not found.");
 
+    await getConversationContext(db, ownerId, voice.conversationId);
     const argumentsHash = createHash("sha256").update(JSON.stringify(input.arguments)).digest("hex");
     const [cached] = await db.select().from(voiceToolCalls).where(and(eq(voiceToolCalls.voiceSessionId, voice.id), eq(voiceToolCalls.callId, input.call_id)));
     if (cached) {
       if (cached.name !== input.name || cached.argumentsHash !== argumentsHash) throw new DomainError(409, "tool_call_conflict", "Tool call ID was reused with different arguments.");
       return c.json({ call_id: input.call_id, output: cached.result });
     }
-    const result = await dispatchJournalTool(db, ownerId, voice.conversationId!, input.name, input.arguments, input.call_id);
+    const result = await dispatchJournalTool(db, ownerId, voice.conversationId!, input.name, input.arguments, input.call_id, undefined, c.req.raw.signal);
     await db.insert(voiceToolCalls).values({ id: randomUUID(), voiceSessionId: voice.id, callId: input.call_id, name: input.name, argumentsHash, result }).onConflictDoNothing();
     return c.json({ call_id: input.call_id, output: result });
   });

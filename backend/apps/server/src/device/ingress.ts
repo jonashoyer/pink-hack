@@ -1,3 +1,4 @@
+import { stopVoiceConversation } from "../domain/journal";
 import type { Server as NodeHTTPServer, IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import type { Database } from "@backend/db";
@@ -102,6 +103,7 @@ export class DeviceAudioConnection {
   }
   private owned(conversation: DeviceConversation) {
     if (conversation.source !== "atech" || conversation.device_id !== this.deviceId) throw new DomainError(403, "device_conversation_mismatch", "The voice conversation is not bound to this device.");
+    if (conversation.state !== "active") throw new DomainError(409, "conversation_stopped", "This conversation was stopped. Start a new conversation.");
     return conversation;
   }
   private async control(control: DeviceControl) {
@@ -120,6 +122,7 @@ export class DeviceAudioConnection {
     }
     if (control.type === "stop" || control.type === "cancel") {
       this.work.abort();
+      if (this.conversation) await stopVoiceConversation(this.db, this.ownerId, this.conversation.id);
       const finalized = await this.live?.close();
       if (finalized === false) this.error("device_voice_close_unverified");
       this.publish("stopped");

@@ -1,3 +1,4 @@
+import { assertAgentExecution, type AgentExecution } from "./agent-execution";
 import { randomUUID } from "node:crypto";
 import { and, eq, desc, gte, lte, lt, or, isNull } from "drizzle-orm";
 import { z } from "zod";
@@ -356,7 +357,7 @@ export async function createVoiceConversation(db: Database, ownerId: string, inp
   return write(db, async (tx) => {
     await verifyConversationDevice(tx, ownerId, data.source, data.device_id);
     const replay = await lookupOperation<VoiceConversation>(tx, ownerId, data.operation_id, request);
-    if (replay) return replay;
+    if (replay) return readConversation(tx, ownerId, replay.id);
     await assertAvailableOperation(tx, ownerId, data.operation_id);
     if (data.entry_id) await readEntry(tx, ownerId, data.entry_id);
     const timestamp = now();
@@ -399,11 +400,12 @@ export async function createJournalEntry(db: Database, ownerId: string, input: J
     return recordOperation(tx, ownerId, data.operation_id, request, await insertDirectJournal(tx, ownerId, data, "app"));
   });
 }
-export async function createJournalForConversation(db: Database, ownerId: string, conversationId: string, input: JournalCreateInput) {
+export async function createJournalForConversation(db: Database, ownerId: string, conversationId: string, input: JournalCreateInput, execution?: AgentExecution, signal?: AbortSignal) {
   const data = validate(journalCreateSchema, input);
   const request = { kind: "conversation_journal_create", conversation_id: conversationId, input: data };
   return write(db, async (tx) => {
     const conversation = await readConversation(tx, ownerId, conversationId);
+    await assertAgentExecution(tx, ownerId, conversationId, execution);
     const replay = await lookupOperation<JournalEntryResult>(tx, ownerId, data.operation_id, request);
     if (replay) return replay;
     assertConversationActive(conversation);
@@ -412,14 +414,15 @@ export async function createJournalForConversation(db: Database, ownerId: string
     const entry = await insertDirectJournal(tx, ownerId, data, conversation.source, conversation);
     await tx.update(voiceConversations).set({ last_entry_id: entry.id, updated_at: now() }).where(and(eq(voiceConversations.id, conversationId), eq(voiceConversations.owner_id, ownerId)));
     return recordOperation(tx, ownerId, data.operation_id, request, entry);
-  });
+  }, signal ?? execution?.signal);
 }
-export async function patchJournalForConversation(db: Database, ownerId: string, conversationId: string, entryId: string, input: JournalPatchInput) {
+export async function patchJournalForConversation(db: Database, ownerId: string, conversationId: string, entryId: string, input: JournalPatchInput, execution?: AgentExecution, signal?: AbortSignal) {
   validate(recordIdSchema, entryId);
   const data = validate(journalPatchSchema, input);
   const request = { kind: "conversation_journal_patch", conversation_id: conversationId, entry_id: entryId, input: data };
   return write(db, async (tx) => {
     const conversation = await readConversation(tx, ownerId, conversationId);
+    await assertAgentExecution(tx, ownerId, conversationId, execution);
     const replay = await lookupOperation<JournalEntryResult>(tx, ownerId, data.operation_id, request);
     if (replay) return replay;
     assertConversationActive(conversation);
@@ -433,5 +436,5 @@ export async function patchJournalForConversation(db: Database, ownerId: string,
     if (!updated) throw conflict();
     await tx.update(voiceConversations).set({ last_entry_id: entryId, updated_at: timestamp }).where(and(eq(voiceConversations.id, conversationId), eq(voiceConversations.owner_id, ownerId)));
     return recordOperation(tx, ownerId, data.operation_id, request, canonicalJournalResult(updated));
-  });
+  }, signal ?? execution?.signal);
 }

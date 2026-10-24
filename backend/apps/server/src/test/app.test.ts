@@ -73,6 +73,12 @@ test("fresh fixed-owner API needs no cookies/tokens, rejects owner spoofing and 
     assert.deepEqual((await request(`/api/v1/voice/sessions/${live.body.id}/tools`, "POST", tool)).body, voiceEntry.body);
     assert.deepEqual(await db.select().from(checkinSessions), []);
     assert.equal((await request("/api/v1/journal")).body.entries.length, 2);
+    const stopped = await request(`/api/v1/voice/sessions/${live.body.id}/stop`, "POST", {});
+    assert.equal(stopped.status, 200); assert.deepEqual(stopped.body, {voice_session_id:live.body.id,state:"stopped"});
+    assert.deepEqual((await request(`/api/v1/voice/sessions/${live.body.id}/stop`, "POST", {})).body, stopped.body);
+    assert.equal((await request(`/api/v1/voice/sessions/${live.body.id}/tools`, "POST", tool)).status, 409);
+    assert.equal((await request(`/api/v1/voice/sessions/${live.body.id}/agent`, "POST", {delegation_id:"late",messages:[{role:"user",content:"Save another entry"}]})).status, 409);
+    assert.equal((await request("/api/v1/journal")).body.entries.length, 2);
     assert.equal((await request("/api/v1/device/provision", "POST", { owner_id: "legacy-owner" })).status, 422);
     const provision = await request("/api/v1/device/provision", "POST", {}); assert.equal(provision.status, 200); assert.equal(provision.body.device_id, "demo"); assert.equal(typeof provision.body.token, "string");
     assert.equal((await request(`/api/v1/pages/${page.id}`, "DELETE", { expected_revision: renamed.body.revision, operation_id: "archive" })).body.archived, true);

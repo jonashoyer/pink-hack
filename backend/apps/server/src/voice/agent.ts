@@ -1,3 +1,4 @@
+import { claimDelegation, finishDelegation, registerAgent } from "./delegations";
 import type { Database } from "@backend/db";
 import { z } from "zod";
 import { DomainError } from "../domain/errors";
@@ -93,7 +94,7 @@ async function result(db: Database, input: JournalAgentInput, text: string, writ
 }
 
 /** Application reasoning for Live delegation, using owner-bound direct journal services. */
-export async function runJournalAgent(db: Database, config: JournalAgentConfig, input: JournalAgentInput, signal?: AbortSignal, fetcher: typeof fetch = fetch): Promise<JournalAgentResult> {
+async function executeJournalAgent(db: Database, config: JournalAgentConfig, input: JournalAgentInput, signal: AbortSignal | undefined, fetcher: typeof fetch, executionId: string): Promise<JournalAgentResult> {
   const activeSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(45_000)]) : AbortSignal.timeout(45_000);
   try {
     checkAbort(activeSignal);
@@ -114,6 +115,7 @@ export async function runJournalAgent(db: Database, config: JournalAgentConfig, 
     const seen = new Map<string, { request: string; content: string }>();
     let count = 0;
     const writtenIds = new Set<string>();
+    let mutationIndex = 0;
     for (let round = 0; round < 4; round++) {
       checkAbort(activeSignal);
       let response: Response;
@@ -151,7 +153,8 @@ export async function runJournalAgent(db: Database, config: JournalAgentConfig, 
           // The dispatcher derives action IDs from this owned session and the
           // provider call ID, validates inputs and enforces entry revisions.
           checkAbort(activeSignal);
-          const executed = await dispatchJournalTool(db, input.ownerId, input.voiceSessionId, call.name, call.input, `${input.delegationId}:${call.id}`);
+          const executed = await dispatchJournalTool(db, input.ownerId, input.voiceSessionId, call.name, call.input, `${input.delegationId}:${call.id}`, { delegationId: input.delegationId, executionId, mutationIndex, signal: activeSignal });
+          if (call.name === "create_journal_entry" || call.name === "update_journal_entry") mutationIndex++;
           content = boundedJson(executed);
           if (call.name === "create_journal_entry" || call.name === "update_journal_entry") {
             const persisted = z.object({ id: recordIdSchema }).safeParse(executed);
@@ -179,4 +182,25 @@ export async function runJournalAgent(db: Database, config: JournalAgentConfig, 
     if (error instanceof DomainError) throw error;
     throw unavailable();
   }
+}
+
+/** Durable delegation identity is independent of newly generated model call IDs. */
+export async function runJournalAgent(db:Database,config:JournalAgentConfig,input:JournalAgentInput,signal?:AbortSignal,fetcher:typeof fetch=fetch):Promise<JournalAgentResult>{
+  validate(recordIdSchema,input.ownerId);validate(recordIdSchema,input.voiceSessionId);
+  const request=validate(journalAgentRequestSchema,{delegation_id:input.delegationId,entry_id:input.entryId,messages:input.messages});
+  if(signal?.aborted)throw new DomainError(408,"assistant_aborted","The assistant request was canceled.");
+  const normalized={...input,messages:request.messages,entryId:request.entry_id};
+  const claim=await claimDelegation(db,normalized);
+  if("result" in claim)return claim.result;
+  const controller=new AbortController();const activeSignal=signal?AbortSignal.any([signal,controller.signal]):controller.signal;
+  const unregister=registerAgent(db,input.ownerId,input.voiceSessionId,controller);
+  try{
+    const output=await executeJournalAgent(db,config,normalized,activeSignal,fetcher,claim.executionId);
+    return (await finishDelegation(db,normalized,claim.executionId,output))!;
+  }catch(error){
+    const failure=error instanceof DomainError?error:unavailable();
+    const saved=await finishDelegation(db,normalized,claim.executionId,undefined,failure);
+    if(saved&&!activeSignal.aborted)return saved;
+    throw failure;
+  }finally{unregister();}
 }

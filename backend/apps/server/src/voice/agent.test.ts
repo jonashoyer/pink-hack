@@ -1,3 +1,9 @@
+import { spawnSync } from "node:child_process";
+import { claimDelegation, abortConversationAgents } from "./delegations";
+import { dispatchJournalTool } from "./tools";
+import { stopVoiceConversation, readVoiceConversation } from "../domain/journal";
+import { eq } from "drizzle-orm";
+import { agentDelegations } from "@backend/db/schema/voice";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -26,7 +32,7 @@ async function setup() {
   const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
   const render = (value: SQL) => dialect.sqlToQuery(value).sql;
   await db.run(sql.raw("PRAGMA foreign_keys = ON"));
-  for (const table of [user, devices, ...Object.values(tables)] as SQLiteTable[]) {
+  for (const table of [user, devices, ...Object.values(tables), agentDelegations] as SQLiteTable[]) {
     const config = getTableConfig(table);
     const columns = config.columns.map((col) => {
       let out = `${quote(col.name)} ${col.getSQLType()}${col.primary ? " PRIMARY KEY" : ""}${col.notNull ? " NOT NULL" : ""}${col.isUnique ? " UNIQUE" : ""}`;
@@ -38,7 +44,7 @@ async function setup() {
     });
     for (const fk of config.foreignKeys) {
       const ref = fk.reference();
-      columns.push(`FOREIGN KEY (${ref.columns.map((c) => quote(c.name)).join(",")}) REFERENCES ${quote(getTableConfig(ref.foreignTable).name)} (${ref.foreignColumns.map((c) => quote(c.name)).join(",")}) ON DELETE ${fk.onDelete}`);
+      columns.push(`FOREIGN KEY (${ref.columns.map((c) => quote(c.name)).join(",")}) REFERENCES ${quote(getTableConfig(ref.foreignTable).name)} (${ref.foreignColumns.map((c) => quote(c.name)).join(",")}) ON DELETE ${fk.onDelete ?? "NO ACTION"}`);
     }
     await db.run(sql.raw(`CREATE TABLE ${quote(config.name)} (${columns.join(",")})`));
     for (const index of config.indexes) {
@@ -47,7 +53,7 @@ async function setup() {
     }
   }
   for (const owner of ["alice", "bob"]) await db.insert(user).values({ id: owner, name: owner, email: `${owner}@example.test` });
-  return { db, close: async () => { db.$client.close(); await rm(dir, { recursive: true, force: true }); } };
+  return { db, url: `file:${join(dir, "test.db")}`, close: async () => { db.$client.close(); await rm(dir, { recursive: true, force: true }); } };
 }
 const config = { ANTHROPIC_API_KEY: "synthetic-test-key" };
 const journal: tables.JournalDraft = {
@@ -113,7 +119,7 @@ test("ambiguous intent is clarified with an empty write list; text alone cannot 
     assert.equal(output.text, "Which journal entry and what would you like to change?");
     assert.deepEqual(output.entries, []);
     assert.equal((await listJournal(db, "alice", {})).entries.length, 0);
-    const proposed = await runJournalAgent(db, config, request, undefined, mock([answer("Your journal entry is saved.")]));
+    const proposed = await runJournalAgent(db, config, { ...request, delegationId: "false-save-claim" }, undefined, mock([answer("Your journal entry is saved.")]));
     assert.match(proposed.text, /haven't saved any changes/);
     assert.deepEqual(proposed.entries, []);
   } finally { await close(); }
@@ -159,7 +165,7 @@ test("direct update reads an owned entry and preserves unrelated blocks/properti
     assert.deepEqual(stored.properties, journal.properties);
     assert.deepEqual(stored.content, content);
     assert.equal(stored.original_text, journal.original_text);
-    const readOnly = await runJournalAgent(db, config, request, undefined, mock([answer("What else matters today?")]));
+    const readOnly = await runJournalAgent(db, config, { ...request, delegationId: "read-only-after-update" }, undefined, mock([answer("What else matters today?")]));
     assert.deepEqual(readOnly.entries, []);
   } finally { await close(); }
 });
@@ -170,7 +176,7 @@ test("stale entry revisions reject the update and preserve writing", async () =>
     const request = await input(db);
     const output = await runJournalAgent(db, config, request, undefined, mock([create(), answer()]));
     const entry = await getJournalEntry(db, "alice", output.entries[0]!.id);
-    await assert.rejects(runJournalAgent(db, config, request, undefined, mock([use(tool("stale", "update_journal_entry", { entry_id: entry.id, expected_revision: entry.revision + 1, title: "Wrong revision" }))])), rejects("revision_conflict"));
+    await assert.rejects(runJournalAgent(db, config, { ...request, delegationId: "stale-update" }, undefined, mock([use(tool("stale", "update_journal_entry", { entry_id: entry.id, expected_revision: entry.revision + 1, title: "Wrong revision" }))])), rejects("revision_conflict"));
     assert.equal((await getJournalEntry(db, "alice", entry.id)).title, journal.title);
   } finally { await close(); }
 });
@@ -223,7 +229,8 @@ test("conflicting tool IDs reject without a second write", async () => {
   const { db, close } = await setup();
   try {
     const request = await input(db);
-    await assert.rejects(runJournalAgent(db, config, request, undefined, mock([create(), use(tool("create-entry", "create_journal_entry", { ...journal, title: "Changed payload" }))])), rejects("tool_call_conflict"));
+    const output = await runJournalAgent(db, config, request, undefined, mock([create(), use(tool("create-entry", "create_journal_entry", { ...journal, title: "Changed payload" }))]));
+    assert.equal(output.entries.length, 1);
     assert.equal((await listJournal(db, "alice", {})).entries.length, 1);
   } finally { await close(); }
 });
@@ -252,7 +259,7 @@ test("provider failures and malformed/oversized responses are sanitized", async 
       async () => new Response("not-json"), async () => new Response("x".repeat(131_073)),
       mock([{ content: [{ type: "unknown", text: "private synthetic patient payload" }], stop_reason: "end_turn" }]),
     ];
-    for (const fetcher of fetchers) await assert.rejects(runJournalAgent(db, config, request, undefined, fetcher), (e: unknown) => e instanceof DomainError && e.code === "assistant_unavailable" && !/patient|secret|payload/.test(e.message));
+    for (const [index, fetcher] of fetchers.entries()) await assert.rejects(runJournalAgent(db, config, { ...request, delegationId: `failure-${index}` }, undefined, fetcher), (e: unknown) => e instanceof DomainError && e.code === "assistant_unavailable" && !/patient|secret|payload/.test(e.message));
     assert.equal((await listJournal(db, "alice", {})).entries.length, 0);
   } finally { await close(); }
 });
@@ -262,7 +269,7 @@ test("dispatcher rejects invalid inputs and legacy staged tools", async () => {
   try {
     const request = await input(db);
     await assert.rejects(runJournalAgent(db, config, request, undefined, mock([use(tool("bad", "create_journal_entry", { patient: "invalid" }))])), rejects("invalid_input"));
-    for (const name of ["prepare_journal_draft", "confirm_draft", "commit_journal_entry", "cancel_checkin"]) await assert.rejects(runJournalAgent(db, config, request, undefined, mock([use(tool(name, name))])), rejects("unknown_tool"));
+    for (const name of ["prepare_journal_draft", "confirm_draft", "commit_journal_entry", "cancel_checkin"]) await assert.rejects(runJournalAgent(db, config, { ...request, delegationId: name }, undefined, mock([use(tool(name, name))])), rejects("unknown_tool"));
     assert.equal((await listJournal(db, "alice", {})).entries.length, 0);
   } finally { await close(); }
 });
@@ -273,7 +280,7 @@ test("lossy transcripts merge adjacent roles and enforce message/character limit
     const request = await input(db);
     request.messages = [{ role: "user", content: "First fragment" }, { role: "user", content: "Second fragment" }];
     await runJournalAgent(db, config, request, undefined, mock([answer()], (body) => assert.deepEqual(body.messages, [{ role: "user", content: "First fragment\nSecond fragment" }])));
-    await runJournalAgent(db, config, { ...request, messages: [{ role: "assistant", content: "What next?" }] }, undefined, mock([answer()], (body) => {
+    await runJournalAgent(db, config, { ...request, delegationId: "assistant-fragments", messages: [{ role: "assistant", content: "What next?" }] }, undefined, mock([answer()], (body) => {
       assert.deepEqual(body.messages.map((m: any) => m.role), ["user", "assistant", "user"]);
       assert.match(body.messages.at(-1).content, /not a request to write/);
     }));
@@ -300,7 +307,7 @@ test("foreign voice sessions, optional targets and entry updates reject before w
     const foreign = await runJournalAgent(db, config, bob, undefined, mock([create(), answer()]));
     const target = foreign.entries[0]!;
     await assert.rejects(runJournalAgent(db, config, { ...alice, entryId: target.id }, undefined, mock([])), rejects("not_found"));
-    await assert.rejects(runJournalAgent(db, config, alice, undefined, mock([use(tool("foreign-update", "update_journal_entry", { entry_id: target.id, expected_revision: target.revision, title: "Intrusion" }))])), rejects("not_found"));
+    await assert.rejects(runJournalAgent(db, config, { ...alice, delegationId: "foreign-update" }, undefined, mock([use(tool("foreign-update", "update_journal_entry", { entry_id: target.id, expected_revision: target.revision, title: "Intrusion" }))])), rejects("not_found"));
     assert.equal((await listJournal(db, "alice", {})).entries.length, 0);
   } finally { await close(); }
 });
@@ -333,4 +340,88 @@ test("assistant HTTP contract validates server owner context and returns only th
     assert.deepEqual(await readOnly.json(), { text: "What else matters today?", entries: [] });
     assert.equal((await make("alice").request(`/api/v1/checkins/${request.voiceSessionId}/agent`, init)).status, 404);
   } finally { await close(); }
+});
+
+function deferred<T = void>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return {promise,resolve}; }
+
+test("callback replay survives a fresh process and ignores new model IDs; changed input conflicts", async () => {
+  const {db,url,close}=await setup();
+  try{
+    const request=await input(db);
+    const first=await runJournalAgent(db,config,request,undefined,mock([create(),answer()]));
+    const script=`import {createDb} from '@backend/db'; import {runJournalAgent} from './src/voice/agent.ts'; const db=createDb({DATABASE_URL:${JSON.stringify(url)}}); try { const result=await runJournalAgent(db,{ANTHROPIC_API_KEY:'synthetic'},${JSON.stringify(request)},undefined,async()=>{throw Error('model must not rerun with generated-id-two')}); console.log(JSON.stringify(result)); } finally {db.$client.close()}`;
+    const child=spawnSync(process.execPath,["--import","tsx","--input-type=module"],{input:script,encoding:"utf8",cwd:process.cwd()});
+    assert.equal(child.status,0,child.stderr);assert.deepEqual(JSON.parse(child.stdout),first);
+    await assert.rejects(runJournalAgent(db,config,{...request,messages:[{role:"user",content:"Changed request"}]},undefined,mock([])),rejects("delegation_conflict"));
+    await assert.rejects(runJournalAgent(db,config,{...request,entryId:first.entries[0]!.id},undefined,mock([])),rejects("delegation_conflict"));
+    assert.equal((await listJournal(db,"alice")).entries.length,1);
+  }finally{await close();}
+});
+
+test("concurrent callback on another DB client is excluded then replays one result", async()=>{
+  const {db,url,close}=await setup();const db2=createDb({DATABASE_URL:url});
+  try{
+    const request=await input(db);const started=deferred();const release=deferred();let rounds=0;
+    const first=runJournalAgent(db,config,request,undefined,async()=>{if(rounds++===0){started.resolve();await release.promise;return Response.json(create());}return Response.json(answer());});
+    await started.promise;
+    await assert.rejects(runJournalAgent(db2,config,request,undefined,mock([])),rejects("assistant_in_progress"));
+    release.resolve();const result=await first;
+    assert.deepEqual(await runJournalAgent(db2,config,request,undefined,mock([])),result);
+    assert.equal((await listJournal(db2,"alice")).entries.length,1);
+  }finally{db2.$client.close();await close();}
+});
+
+test("provider failure after commit returns known save and replays without a second entry",async()=>{
+  const {db,close}=await setup();try{
+    const request=await input(db);let round=0;
+    const saved=await runJournalAgent(db,config,request,undefined,async()=>round++===0?Response.json(create()):new Response("failure",{status:500}));
+    assert.equal(saved.entries.length,1);
+    assert.deepEqual(await runJournalAgent(db,config,request,undefined,mock([])),saved);
+    assert.equal((await listJournal(db,"alice")).entries.length,1);
+  }finally{await close();}
+});
+
+test("expired crashed callback recovers committed action receipts and rejects its old execution",async()=>{
+  const {db,close}=await setup();try{
+    const request=await input(db);const claim=await claimDelegation(db,request);assert.ok("executionId" in claim);
+    await dispatchJournalTool(db,"alice",request.voiceSessionId,"create_journal_entry",journal,"old-model-id",{delegationId:request.delegationId,executionId:claim.executionId,mutationIndex:0});
+    await db.update(agentDelegations).set({leaseExpiresAt:0}).where(eq(agentDelegations.delegationId,request.delegationId));
+    const result=await runJournalAgent(db,config,request,undefined,mock([]));assert.equal(result.entries.length,1);
+    await assert.rejects(dispatchJournalTool(db,"alice",request.voiceSessionId,"create_journal_entry",journal,"late-model-id",{delegationId:request.delegationId,executionId:claim.executionId,mutationIndex:1}),rejects("assistant_execution_expired"));
+    assert.equal((await listJournal(db,"alice")).entries.length,1);
+  }finally{await close();}
+});
+
+test("Stop during provider work revokes late callbacks; a commit that wins survives",async()=>{
+  const {db,close}=await setup();try{
+    const request=await input(db);const continuing=deferred();const release=deferred();let round=0;
+    const work=runJournalAgent(db,config,request,undefined,async()=>{if(round++===0)return Response.json(create());continuing.resolve();await release.promise;return new Response("failure",{status:500});});
+    await continuing.promise;assert.equal((await listJournal(db,"alice")).entries.length,1);
+    abortConversationAgents(db,"alice",request.voiceSessionId);await stopVoiceConversation(db,"alice",request.voiceSessionId);release.resolve();
+    await assert.rejects(work,rejects("assistant_aborted"));
+    assert.equal((await readVoiceConversation(db,"alice",request.voiceSessionId)).state,"stopped");
+    await assert.rejects(runJournalAgent(db,config,{...request,delegationId:"late-callback"},undefined,mock([])),rejects("conversation_stopped"));
+    assert.equal((await listJournal(db,"alice")).entries.length,1);
+  }finally{await close();}
+});
+
+test("abort after journal insert but before transaction completion rolls back accepted mutation",async(t)=>{
+  const {db,close}=await setup();try{
+    const request=await input(db);const controller=new AbortController();const accepted=deferred();const release=deferred();
+    const transaction=db.transaction.bind(db);
+    t.mock.method(db,"transaction",((fn:any)=>transaction(async(tx:any)=>{
+      const insert=tx.insert.bind(tx);
+      tx.insert=(table:any)=>{
+        const builder=insert(table);if(table!==tables.journalDocuments)return builder;
+        const values=builder.values.bind(builder);
+        builder.values=(data:any)=>{const query=values(data);const returning=query.returning.bind(query);query.returning=async(...args:any[])=>{const rows=await returning(...args);accepted.resolve();await release.promise;return rows;};return query;};return builder;
+      };return fn(tx);
+    })) as any);
+    const work=runJournalAgent(db,config,request,controller.signal,mock([create(),answer()]));
+    await accepted.promise;controller.abort();release.resolve();
+    await assert.rejects(work,rejects("assistant_aborted"));
+    assert.equal((await listJournal(db,"alice")).entries.length,0);
+    await stopVoiceConversation(db,"alice",request.voiceSessionId);
+    await assert.rejects(dispatchJournalTool(db,"alice",request.voiceSessionId,"create_journal_entry",journal,"queued-tool"),rejects("conversation_stopped"));
+  }finally{await close();}
 });

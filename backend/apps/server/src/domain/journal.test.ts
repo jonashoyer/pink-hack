@@ -415,7 +415,7 @@ test("conversation writes update metadata atomically and use all custom context 
     assert.deepEqual(updated.content, entry.content);
     assert.deepEqual(await patchJournalForConversation(db, "alice", conversation.id, entry.id, patch), updated);
     assert.deepEqual(await createJournalForConversation(db, "alice", conversation.id, create), entry);
-    assert.deepEqual(await createVoiceConversation(db, "alice", input), conversation);
+    assert.deepEqual(await createVoiceConversation(db, "alice", input), await readVoiceConversation(db, "alice", conversation.id));
     await assert.rejects(patchJournalForConversation(db, "alice", conversation.id, entry.id, { expected_revision: 1, operation_id: "stale-conversation-update", title: "Stale" }), rejects("revision_conflict"));
     await assert.rejects(readVoiceConversation(db, "bob", conversation.id), rejects("not_found"));
     await assert.rejects(createJournalForConversation(db, "bob", conversation.id, { ...create, operation_id: "foreign-conversation-write" }), rejects("not_found"));

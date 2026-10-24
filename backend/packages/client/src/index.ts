@@ -21,6 +21,7 @@ export function createVoiceConnection(options: VoiceOptions) {
   let startup: AbortController | undefined;
   let backendWork: AbortController | undefined;
   let delegationRunning = false;
+  let backendStop: Promise<boolean> | undefined;
   let ready = false;
   let closeResolver: ((confirmed: boolean) => void) | undefined;
   let closeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -41,6 +42,16 @@ export function createVoiceConnection(options: VoiceOptions) {
     if (!response.ok) throw new Error(value.error?.message ?? "The backend request failed.");
     return value;
   };
+  const revokeBackend = (): Promise<boolean> => {
+    if (!session) return Promise.resolve(false);
+    if (backendStop) return backendStop;
+    const id = session.voice_session_id;
+    backendStop = post(`/voice/sessions/${id}/stop`, {}, AbortSignal.timeout(10000)).then(value => value.voice_session_id === id && value.state === "stopped").catch(() => false).then(stopped => {
+      if (!stopped) backendStop = undefined;
+      return stopped;
+    });
+    return backendStop;
+  };
   const send = (event: object) => { if (channel?.readyState === "open") channel.send(JSON.stringify(event)); };
   const cleanup = () => {
     ready = false; clearTimeout(closeTimer); clearTimeout(readyTimer);
@@ -50,14 +61,15 @@ export function createVoiceConnection(options: VoiceOptions) {
   };
   const fail = (message: string) => {
     readyRejecter?.(new Error(message)); readyRejecter = undefined;
-    closeResolver?.(false); closeResolver = undefined; cleanup(); options.onStatus("error"); options.onError?.(message);
+    closeResolver?.(false); closeResolver = undefined; void revokeBackend(); cleanup(); options.onStatus("error"); options.onError?.(message);
   };
   const finishResponses = async (responseId: string) => {
     const batch = calls.get(responseId) ?? []; calls.delete(responseId);
     if (!batch.length || !session || !ready) return;
+    backendWork?.abort(); const work = new AbortController(); backendWork = work;
     await Promise.all(batch.map(async (call) => {
       let output: unknown;
-      try { output = (await post(`/voice/sessions/${session!.id}/tools`, { call_id: call.call_id, name: call.name, arguments: JSON.parse(call.arguments) })).output; }
+      try { output = (await post(`/voice/sessions/${session!.id}/tools`, { call_id: call.call_id, name: call.name, arguments: JSON.parse(call.arguments) }, work.signal)).output; }
       catch { output = { error: "Tool request failed. Read current journal state before retrying.", saved: false }; }
       if (ready) send({ type: "response.item.create", item: { type: "function_call_output", call_id: call.call_id, output: JSON.stringify(output) } });
     }));
@@ -66,7 +78,7 @@ export function createVoiceConnection(options: VoiceOptions) {
   const eventHandler = (event: LiveEvent) => {
     if (event.type === "error") { fail("The voice provider reported an error."); return; }
     if (event.type === "session.closed") {
-      closeResolver?.(true); closeResolver = undefined; cleanup(); options.onStatus("closed"); return;
+      closeResolver?.(true); closeResolver = undefined; void revokeBackend(); cleanup(); options.onStatus("closed"); return;
     }
     if (event.type === "session.started") {
       if (!session || !validLiveSession(event, session)) { fail("Voice returned an unexpected session."); return; }
@@ -117,7 +129,7 @@ export function createVoiceConnection(options: VoiceOptions) {
   return {
     async start(): Promise<VoiceSession> {
       if (peer || (startup && !startup.signal.aborted)) throw new Error("Voice is already connecting or connected.");
-      options.onStatus("connecting"); startup = new AbortController();
+      options.onStatus("connecting"); backendStop = undefined; session = undefined; startup = new AbortController();
       try {
         microphone = await navigator.mediaDevices.getUserMedia({ audio: true });
         if (startup.signal.aborted) { microphone.getTracks().forEach((track) => track.stop()); throw new Error("Voice connection cancelled."); }
@@ -129,22 +141,24 @@ export function createVoiceConnection(options: VoiceOptions) {
         channel.addEventListener("close", () => { if (ready) fail("Voice disconnected before finalization was confirmed."); });
         const sdp = await liveOffer(peer, startup.signal);
         session = await post("/voice/sessions", { ...(options.entryId ? { entry_id: options.entryId } : {}), operation_id: crypto.randomUUID(), transport: { type: "webrtc", sdp } }, startup.signal) as VoiceSession;
+        if (startup.signal.aborted) { await revokeBackend(); throw new Error("Voice connection cancelled."); }
         const started = new Promise<void>((resolve, reject) => { readyResolver = resolve; readyRejecter = reject; readyTimer = setTimeout(() => fail("Voice startup timed out."), 20000); });
         await peer.setRemoteDescription({ type: "answer", sdp: session.transport.sdp });
         await started;
         return session;
-      } catch (error) { cleanup(); options.onStatus("error"); throw error; }
+      } catch (error) { await revokeBackend(); cleanup(); options.onStatus("error"); throw error; }
     },
-    async close(): Promise<{ confirmed: boolean }> {
-      if (!ready || channel?.readyState !== "open") { readyRejecter?.(new Error("Voice connection cancelled.")); readyRejecter = undefined; cleanup(); options.onStatus("closed"); return { confirmed: false }; }
+    async close(): Promise<{ confirmed: boolean; backendStopped: boolean }> {
+      if (!ready || channel?.readyState !== "open") { readyRejecter?.(new Error("Voice connection cancelled.")); readyRejecter = undefined; cleanup(); options.onStatus("closed"); return { confirmed: false, backendStopped: await revokeBackend() }; }
       ready = false; backendWork?.abort(); microphone?.getAudioTracks().forEach((track) => { track.enabled = false; });
       if (audio) audio.muted = true;
       options.onStatus("closing");
+      const stopped = revokeBackend();
       const confirmed = await new Promise<boolean>((resolve) => {
         closeResolver = resolve; closeTimer = setTimeout(() => { closeResolver = undefined; cleanup(); options.onStatus("closed"); resolve(false); }, 15000);
         send({ type: "session.close" });
       });
-      return { confirmed };
+      return { confirmed, backendStopped: await stopped };
     },
   };
 }

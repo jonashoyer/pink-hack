@@ -282,7 +282,7 @@ test("unpersisted, foreign and stale save claims emit no saved event or spoken s
   } finally { await f.close(); }
 });
 
-test("stop and network disconnect retain the owned conversation for ID resume; target cannot be spoofed", async () => {
+test("explicit Stop revokes writing; network reconnect retains a different active conversation", async () => {
   const f = await fixture();
   try {
     const entry = await createJournalEntry(f.db, DEMO_USER_ID, { ...draft, operation_id: "target-entry" });
@@ -293,15 +293,19 @@ test("stop and network disconnect retain the owned conversation for ID resume; t
     const closed = once(first.ws, "close"); first.send({ type: "stop" }); await closed;
     assert.ok(first.frames.some((x) => x.json?.type === "flush"));
     assert.ok(f.providers[0]!.sent.some((e) => e.type === "session.close"));
-    assert.equal((await readVoiceConversation(f.db, DEMO_USER_ID, id)).state, "active");
+    assert.equal((await readVoiceConversation(f.db, DEMO_USER_ID, id)).state, "stopped");
     await delay(20);
     const second = await f.connect(); second.send({ type: "start", voice_session_id: id, operation_id: "resume-stop" });
+    await until(() => second.frames.some((x) => x.json?.code === "conversation_stopped"));
+    assert.equal(f.providers.length, 1);
+    const network = await createVoiceConversation(f.db, DEMO_USER_ID, { source: "atech", device_id: "demo", operation_id: "network-active" });
+    second.send({ type: "start", voice_session_id: network.id, operation_id: "network-connect" });
     await until(() => second.frames.some((x) => x.json?.state === "listening"));
-    assert.equal(second.frames.find((x) => x.json?.state === "listening")!.json.voice_session_id, id);
+    assert.equal(second.frames.find((x) => x.json?.state === "listening")!.json.voice_session_id, network.id);
     const disconnected = once(second.ws, "close"); second.ws.close(); await disconnected; await delay(20);
-    const third = await f.connect(); third.send({ type: "start", voice_session_id: id, operation_id: "resume-with-target", entry_id: entry.id });
+    const third = await f.connect(); third.send({ type: "start", voice_session_id: network.id, operation_id: "resume-with-target", entry_id: entry.id });
     await until(() => third.frames.some((x) => x.json?.code === "invalid_device_control"));
-    third.send({ type: "start", voice_session_id: id, operation_id: "resume-network" });
+    third.send({ type: "start", voice_session_id: network.id, operation_id: "resume-network" });
     await until(() => third.frames.some((x) => x.json?.state === "listening"));
     assert.equal((await listJournal(f.db, DEMO_USER_ID)).entries.length, 1);
   } finally { await f.close(); }

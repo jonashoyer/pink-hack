@@ -6,8 +6,11 @@ export type Store = Pick<Database, "select" | "insert" | "update">;
 export const missing = () => new DomainError(404, "not_found", "Record was not found.");
 export const conflict = () => new DomainError(409, "revision_conflict", "Revision changed. Reload the record before retrying.");
 export const now = () => new Date().toISOString();
-export async function write<T>(db: Database, fn: (tx: Store) => Promise<T>): Promise<T> {
-  try { return await db.transaction(fn); }
+export async function write<T>(db: Database, fn: (tx: Store) => Promise<T>, signal?: AbortSignal): Promise<T> {
+  try { return await db.transaction(async tx => {
+    const check = () => { if (signal?.aborted) throw new DomainError(408, "operation_aborted", "The operation was canceled before commit."); };
+    check(); const result = await fn(tx); check(); return result;
+  }); }
   catch (error) {
     if (error instanceof DomainError) throw error;
     throw new DomainError(503, "storage_unavailable", "Storage failed. Reload and retry with the same operation ID.", true);
