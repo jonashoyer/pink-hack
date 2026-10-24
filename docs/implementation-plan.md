@@ -36,7 +36,7 @@ Keep the simple BlockNote custom-page sidebar and one Journal. Direct page/journ
 
 Remove inactive legacy check-in creation and staged review methods from the new voice path. Copy/adapt the private framework-independent client modules locally; do not assume an external npm publication.
 
-The backend owner supplies a verified Vercel runtime API URL and exact allowed origins/auth behavior. The Vercel dashboard is not an API URL. Complete unrelated active frontend mutation work sequentially; no competing writer.
+Wire the verified fixed API `https://pink-hack.vercel.app`. The backend owner confirmed both `http://localhost:8080` and the canonical public Lovable preview in CORS and trusted authentication, plus real Turso Journal POST/reload/PATCH and retry/conflict behavior. Use the frozen client modules and current owned voice-session callback. Complete active frontend mutations sequentially; no competing writer.
 
 Verify page and journal save/reload against real Turso-backed API, then voice creation and a direct Day-plan update.
 
@@ -53,3 +53,7 @@ Once a supported route exists, verify actual microphone/speaker PCM, ownership, 
 Add unfamiliar custom pages, use them in conversation, directly create a Journal entry with unfamiliar properties, reload it, and update the Day plan in its page body without replacing unrelated content.
 
 Check duplicate retries, stale edits, foreign-user access, failed-write feedback, and stop preventing further actions. Record actual backend/frontend revisions, verified Vercel URL, Turso persistence, audio evidence, and remaining gaps. Do not claim new direct-write readiness from old staged tests or a prior Azure host health check.
+
+## Current handoff
+
+Production HTTP is verified at fixed `https://pink-hack.vercel.app`, deployment `dpl_Ak43VzrcBBiwjuD27reY4y6e4WNF`. The backend owner passed external health, unauthenticated rejection, authenticated Better Auth session, real Turso direct create/reload/update, identical retry, changed-payload conflict, and stale revision checks. Frozen client and bounds are in current app contracts. The sole frontend writer has the fixed host and wiring handoff. Authenticated device audio and the full frontend voice/agent path remain separate checks; do not duplicate paid startup or provision the singleton device. Test-file ownership remains with its assigned worker.

@@ -1,39 +1,33 @@
-import { serve } from "@hono/node-server";
+import { getRequestListener, serve } from "@hono/node-server";
 import { createApp } from "./app";
 import { ENV } from "./env.server";
 import { auth, db } from "./services";
-import type { Server } from "node:http";
+import { createServer, type Server } from "node:http";
 import { attachDeviceAudio } from "./device/ingress";
-import { commitCheckin, createDeviceCheckin, getCheckin } from "./domain/journal";
+import { createVoiceConversation, readVoiceConversation } from "./domain/journal";
 import { DomainError } from "./domain/errors";
 import { runJournalAgent } from "./voice/agent";
 import { conversationInstructions } from "./voice/prompts";
 import { deviceMessages } from "./voice/transcripts";
 
 const app = createApp(db, auth, ENV);
-const server = serve({ fetch: app.fetch, port: ENV.PORT }, (info) => {
+const server = process.env.VERCEL === "1" ? createServer(getRequestListener(app.fetch)) : serve({ fetch: app.fetch, port: ENV.PORT }, (info) => {
   console.log(`Pink Hack backend listening on http://localhost:${info.port}`);
 });
 const detachDevice = attachDeviceAudio(server as Server, db, {
   ...ENV, instructions: conversationInstructions,
   application: {
-    startCheckin: (store, ownerId, deviceId, operationId) => createDeviceCheckin(store, ownerId, deviceId, { operation_id: operationId }),
-    loadCheckin: async (store, ownerId, deviceId, checkinId) => {
-      const checkin = await getCheckin(store, ownerId, checkinId);
-      if (checkin.source !== "atech" || checkin.device_id !== deviceId) throw new DomainError(404, "not_found", "Device check-in was not found.");
-      return checkin;
+    startConversation: (store, ownerId, deviceId, operationId, entryId) => createVoiceConversation(store, ownerId, { source: "atech", device_id: deviceId, operation_id: operationId, ...(entryId ? { entry_id: entryId } : {}) }),
+    readConversation: async (store, ownerId, deviceId, voiceSessionId) => {
+      const conversation = await readVoiceConversation(store, ownerId, voiceSessionId);
+      if (conversation.source !== "atech" || conversation.device_id !== deviceId) throw new DomainError(404, "not_found", "Device conversation was not found.");
+      return conversation;
     },
-    onDelegation: async ({ ownerId, checkinId, transcripts, signal }) => {
+    onDelegation: async ({ ownerId, voiceSessionId, delegationId, transcripts, signal }) => {
       signal.throwIfAborted();
-      const result = await runJournalAgent(db, ENV, { ownerId, checkinId, messages: deviceMessages(transcripts) }, signal);
+      const result = await runJournalAgent(db, ENV, { ownerId, voiceSessionId, delegationId, messages: deviceMessages(transcripts) }, signal);
       signal.throwIfAborted();
-      const reviewing = result.stage === "draft" || result.stage === "awaiting_confirmation";
-      return { commentary: `${result.text.slice(0, 350)}${reviewing ? " To confirm, say save this journal." : ""}`, ...(reviewing ? { reviewRevision: result.draft_revision } : {}) };
-    },
-    onConfirmed: async ({ ownerId, checkinId, receipt, operationId, signal }) => {
-      signal.throwIfAborted();
-      const entry = await commitCheckin(db, ownerId, checkinId, { confirmation_receipt: receipt, operation_id: operationId });
-      return { entry_id: entry.id, revision: entry.revision };
+      return result;
     },
   },
 });
@@ -43,3 +37,5 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     setTimeout(() => process.exit(1), 15000).unref();
   });
 }
+
+export default server;

@@ -1,0 +1,12 @@
+.env
+.env.local
+**/.env
+**/.env.local
+**/.env.production
+**/.deploy/**
+**/node_modules/**
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite-*
+.git/**

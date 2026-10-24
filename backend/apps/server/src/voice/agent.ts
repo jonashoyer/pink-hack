@@ -164,7 +164,14 @@ export async function runJournalAgent(db: Database, config: JournalAgentConfig, 
         roundIds.add(call.id);
       }
       // Signed thinking must be replayed unchanged in the next provider request.
-      messages.push({ role: "assistant", content: generated.data.content }, { role: "user", content: results });
+      const continuationIds = new Set<string>();
+      const continuation = generated.data.content.filter((block) => {
+        if (block.type !== "tool_use") return true;
+        if (continuationIds.has(block.id)) return false;
+        continuationIds.add(block.id);
+        return true;
+      });
+      messages.push({ role: "assistant", content: continuation }, { role: "user", content: results });
     }
     throw unavailable();
   } catch (error) {

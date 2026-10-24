@@ -10,16 +10,17 @@ import { createDb } from "@backend/db";
 import { user } from "@backend/db/schema/auth";
 import { devices } from "@backend/db/schema/device";
 import * as journalTables from "@backend/db/schema/journal";
-import { SQL, is, sql } from "drizzle-orm";
+import { SQL, is, sql, eq } from "drizzle-orm";
 import { getTableConfig, SQLiteDialect } from "drizzle-orm/sqlite-core";
 import { Hono } from "hono";
 import { createDeviceRoutes } from "../routes/device";
-import { createDeviceCheckin, createCheckin, getCheckin, prepareDraft, commitCheckin, listJournal } from "../domain/journal";
+import { createVoiceConversation, readVoiceConversation, createJournalForConversation, patchJournalForConversation, createJournalEntry, getJournalEntry, listJournal } from "../domain/journal";
 import { DomainError } from "../domain/errors";
 import { provisionDevice, authenticateDevice, hashDeviceToken } from "./credentials";
 import { attachDeviceAudio } from "./ingress";
 import { DeviceLiveSession } from "./live";
-import { TRANSCRIPT_SETTLE_MS } from "./speech-confirmation";
+import { claimDeviceLease, renewDeviceLease, releaseDeviceLease, DeviceLeaseGuard } from "./lease";
+import { performance } from "node:perf_hooks";
 import type { DeviceAudioConfig, DeviceApplication, DelegationContext } from "./contracts";
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -78,16 +79,12 @@ class FakeProvider extends EventEmitter {
 }
 const voice = { OPENAI_BACKEND_MODEL: "unused", AZURE_OPENAI_API_KEY: "synthetic-private-key", AZURE_OPENAI_ENDPOINT: "https://synthetic.openai.azure.com", AZURE_OPENAI_REALTIME_DEPLOYMENT: "gpt-live-1" };
 const draft = { title: "Synthetic device check-in", original_text: "I want to water the plants.", content: [{ type: "paragraph", content: "Water the plants after resting." }], properties: { garden: true, sleep: 6 } };
-function application(db: ReturnType<typeof createDb>, overrides: Partial<DeviceApplication> = {}): DeviceApplication {
+function application(overrides: Partial<DeviceApplication> = {}): DeviceApplication {
   return {
-    startCheckin: (store, ownerId, deviceId, operationId) => createDeviceCheckin(store, ownerId, deviceId, { operation_id: operationId }),
-    loadCheckin: (store, ownerId, _deviceId, checkinId) => getCheckin(store, ownerId, checkinId),
-    onDelegation: async () => ({}),
-    onConfirmed: async (context) => {
-      assert.equal(context.signal.aborted, false);
-      const entry = await commitCheckin(db, context.ownerId, context.checkinId, { operation_id: context.operationId, confirmation_receipt: context.receipt });
-      return { entry_id: entry.id, revision: entry.revision };
-    }, ...overrides,
+    startConversation: (store, ownerId, deviceId, operationId, entryId) => createVoiceConversation(store, ownerId, { source: "atech", device_id: deviceId, operation_id: operationId, ...(entryId ? { entry_id: entryId } : {}) }),
+    readConversation: (store, ownerId, _deviceId, voiceSessionId) => readVoiceConversation(store, ownerId, voiceSessionId),
+    onDelegation: async () => ({ entries: [] }),
+    ...overrides,
   };
 }
 async function fixture(overrides: Partial<DeviceApplication> = {}) {
@@ -95,7 +92,7 @@ async function fixture(overrides: Partial<DeviceApplication> = {}) {
   const credential = await provisionDevice(storage.db, "alice");
   const providers: FakeProvider[] = [];
   const server = createServer((_req, res) => { res.writeHead(404); res.end(); });
-  const app = application(storage.db, overrides);
+  const app = application(overrides);
   const config: DeviceAudioConfig = { ...voice, instructions: "Synthetic test instructions.", application: app };
   const detach = attachDeviceAudio(server, storage.db, config, { providerSocketFactory: (url, options) => {
     assert.equal(url, "wss://synthetic.openai.azure.com/openai/v1/live/sessions");
@@ -199,7 +196,7 @@ test("bidirectional PCM stays ordered, paced, aligned, and bounded; turn end use
 
 test("interrupt aborts application work, flushes queued playback, suppresses old deltas and restarts Live", async () => {
   let delegated: DelegationContext | undefined;
-  let finish: ((value: { commentary: string }) => void) | undefined;
+  let finish: ((value: { text: string; entries: [] }) => void) | undefined;
   const f = await fixture({ onDelegation: async (context) => { delegated = context; return new Promise((resolve) => { finish = resolve; }); } });
   try {
     const client = await f.connect(); client.send({ type: "start", operation_id: "capture-interrupt" });
@@ -214,67 +211,145 @@ test("interrupt aborts application work, flushes queued playback, suppresses old
     assert.equal(delegated!.signal.aborted, true);
     assert.ok(old.sent.some((e) => e.type === "session.close"));
     old.event({ type: "session.output_audio.delta", delta: Buffer.alloc(1024, 99).toString("base64") });
-    finish!({ commentary: "This canceled result must never be sent." });
+    finish!({ text: "This canceled result must never be sent.", entries: [] });
     await delay(75);
     assert.equal(f.providers[1]!.sent.some((e) => e.type === "session.commentary.append"), false);
     const flushIndex = client.frames.findIndex((x) => x.json?.type === "flush");
     assert.equal(client.frames.slice(flushIndex + 1).some((x) => x.audio), false);
-  } finally { finish?.({ commentary: "canceled" }); await f.close(); }
+  } finally { finish?.({ text: "canceled", entries: [] }); await f.close(); }
 });
 
-test("only explicit confirm creates a receipt; saved follows real commit and replay saves once", async () => {
-  const f = await fixture();
+test("direct delegation writes and updates journals without staged records; verified saved events are deduplicated", async () => {
+  let entryId: string | undefined;
+  const f = await fixture({ onDelegation: async (context) => {
+    const entry = entryId
+      ? await patchJournalForConversation(f.db, context.ownerId, context.voiceSessionId, entryId, { operation_id: "direct-update", expected_revision: 1, title: "Updated direct note" })
+      : await createJournalForConversation(f.db, context.ownerId, context.voiceSessionId, { ...draft, operation_id: "direct-create" });
+    entryId = entry.id;
+    return { text: "The journal write completed.", entries: [{ id: entry.id, revision: entry.revision }] };
+  } });
   try {
-    const client = await f.connect(); client.send({ type: "start", operation_id: "capture-save" });
+    const client = await f.connect(); client.send({ type: "start", operation_id: "direct-conversation" });
     await until(() => client.frames.some((x) => x.json?.state === "listening"));
-    const id = client.frames.find((x) => x.json?.state === "listening")!.json.checkin_id;
-    await prepareDraft(f.db, "alice", id, { expected_revision: 0, draft });
-    f.providers[0]!.event({ type: "session.delegation.created", delegation: { id: "model-cannot-confirm", target: "client" }, confirm: true, operation_id: "forged" });
-    await delay(30);
-    assert.equal((await getCheckin(f.db, "alice", id)).confirmation, null);
-    client.send({ type: "confirm", draft_revision: 9, operation_id: "save-one" });
-    await until(() => client.frames.some((x) => x.json?.code === "revision_conflict"));
-    assert.equal((await listJournal(f.db, "alice")).entries.length, 0);
-    client.send({ type: "confirm", draft_revision: 1, operation_id: "save-one" });
+    const voiceSessionId = client.frames.find((x) => x.json?.state === "listening")!.json.voice_session_id;
+    f.providers[0]!.event({ type: "session.delegation.created", delegation: { id: "create-entry", target: "client" } });
     await until(() => client.frames.some((x) => x.json?.type === "saved"));
     const saved = client.frames.find((x) => x.json?.type === "saved")!.json;
-    assert.equal((await getCheckin(f.db, "alice", id)).saved_entry_id, saved.entry_id);
+    assert.equal(saved.voice_session_id, voiceSessionId);
     assert.equal(saved.revision, 1);
-    client.send({ type: "confirm", draft_revision: 1, operation_id: "save-one" });
+    assert.equal((await getJournalEntry(f.db, "alice", saved.entry_id)).voice_conversation_id, voiceSessionId);
+    assert.equal((await f.db.select().from(journalTables.checkinSessions)).length, 0);
+    assert.equal((await f.db.select().from(journalTables.journalDocuments)).length, 1);
+    f.providers[0]!.event({ type: "session.delegation.created", delegation: { id: "update-entry", target: "client" } });
     await until(() => client.frames.filter((x) => x.json?.type === "saved").length === 2);
-    assert.equal((await listJournal(f.db, "alice")).entries.length, 1);
-    const closed = once(client.ws, "close"); client.send({ type: "stop" }); await closed;
-    assert.ok(f.providers[0]!.sent.some((e) => e.type === "session.close"));
+    assert.equal(client.frames.filter((x) => x.json?.type === "saved")[1]!.json.revision, 2);
+    assert.equal((await getJournalEntry(f.db, "alice", saved.entry_id)).title, "Updated direct note");
+    f.providers[0]!.event({ type: "session.delegation.created", delegation: { id: "update-replay", target: "client" } });
+    await until(() => f.providers[0]!.sent.filter((x) => x.type === "session.commentary.append").length === 3);
+    assert.equal(client.frames.filter((x) => x.json?.type === "saved").length, 2);
+    assert.equal(client.frames.some((x) => x.json?.state === "review" || x.json?.draft_revision), false);
+    client.send({ type: "confirm", operation_id: "legacy-save", draft_revision: 1 });
+    await until(() => client.frames.some((x) => x.json?.code === "device_control_not_supported"));
+    // Saved entries do not terminate an ongoing conversation or block PCM.
+    client.ws.send(Buffer.alloc(1024));
+    await until(() => f.providers[0]!.sent.some((x) => x.type === "session.input_audio.append"));
+    const closed = once(client.ws, "close"); client.send({ type: "cancel" }); await closed;
+    assert.equal((await getJournalEntry(f.db, "alice", saved.entry_id)).revision, 2);
   } finally { await f.close(); }
 });
 
-test("failed commit retains the draft; cancel writes nothing; reconnect rejects app-source and resumes owned device checkin", async () => {
-  const f = await fixture({ onConfirmed: async () => { throw new Error("synthetic private storage failure"); } });
+test("unpersisted, foreign and stale save claims emit no saved event or spoken success", async () => {
+  let result: { text: string; entries: Array<{ id: string; revision: number }> } = { text: "Unsupported success claim", entries: [{ id: "missing-entry", revision: 1 }] };
+  const f = await fixture({ onDelegation: async () => result });
   try {
-    const first = await f.connect(); first.send({ type: "start", operation_id: "capture-reconnect" });
-    await until(() => first.frames.some((x) => x.json?.state === "listening"));
-    const id = first.frames.find((x) => x.json?.state === "listening")!.json.checkin_id;
-    await prepareDraft(f.db, "alice", id, { expected_revision: 0, draft });
-    first.send({ type: "confirm", draft_revision: 1, operation_id: "failed-save" });
-    await until(() => first.frames.some((x) => x.json?.code === "device_operation_failed"));
-    assert.ok((await getCheckin(f.db, "alice", id)).draft);
-    assert.equal(first.frames.some((x) => x.json?.type === "saved"), false);
-    const disconnected = once(first.ws, "close"); first.ws.close(); await disconnected; await delay(10);
-    assert.equal((await getCheckin(f.db, "alice", id)).stage, "awaiting_confirmation");
-    const second = await f.connect(); second.send({ type: "start", checkin_id: id, operation_id: "resume" });
-    await until(() => second.frames.some((x) => x.json?.state === "review"));
-    const closed = once(second.ws, "close"); second.send({ type: "cancel" }); await closed;
-    assert.equal((await getCheckin(f.db, "alice", id)).stage, "canceled");
-    assert.equal((await listJournal(f.db, "alice")).entries.length, 0);
-    await delay(10);
-    const appCheckin = await createCheckin(f.db, "alice", { source: "app", operation_id: "app-source" });
-    const third = await f.connect(); third.send({ type: "start", checkin_id: appCheckin.id, operation_id: "spoof" });
-    await until(() => third.frames.some((x) => x.json?.code === "device_checkin_mismatch"));
-    assert.equal(f.providers.length, 2);
+    const client = await f.connect(); client.send({ type: "start", operation_id: "verification-conversation" });
+    await until(() => client.frames.some((x) => x.json?.state === "listening"));
+    const provider = f.providers[0]!;
+    const invoke = (id: string) => provider.event({ type: "session.delegation.created", delegation: { id, target: "client" } });
+    invoke("missing-claim");
+    await until(() => client.frames.some((x) => x.json?.code === "not_found"));
+    const foreign = await createJournalEntry(f.db, "bob", { ...draft, operation_id: "foreign-entry" });
+    result = { text: "Foreign success", entries: [{ id: foreign.id, revision: 1 }] };
+    invoke("foreign-claim");
+    await until(() => client.frames.filter((x) => x.json?.code === "not_found").length === 2);
+    const owned = await createJournalEntry(f.db, "alice", { ...draft, operation_id: "owned-entry" });
+    result = { text: "Stale success", entries: [{ id: owned.id, revision: 8 }] };
+    invoke("stale-claim");
+    await until(() => client.frames.some((x) => x.json?.code === "device_save_revision_changed"));
+    assert.equal(client.frames.some((x) => x.json?.type === "saved"), false);
+    assert.equal(provider.sent.some((x) => x.type === "session.commentary.append"), false);
   } finally { await f.close(); }
 });
 
-test("provider startup waits for session.started and rejects an explicitly wrong PCM rate", async () => {
+test("stop and network disconnect retain the owned conversation for ID resume; target cannot be spoofed", async () => {
+  const f = await fixture();
+  try {
+    const entry = await createJournalEntry(f.db, "alice", { ...draft, operation_id: "target-entry" });
+    const first = await f.connect(); first.send({ type: "start", operation_id: "capture-stop", entry_id: entry.id });
+    await until(() => first.frames.some((x) => x.json?.state === "listening"));
+    const id = first.frames.find((x) => x.json?.state === "listening")!.json.voice_session_id;
+    assert.equal((await readVoiceConversation(f.db, "alice", id)).target_entry_id, entry.id);
+    const closed = once(first.ws, "close"); first.send({ type: "stop" }); await closed;
+    assert.ok(first.frames.some((x) => x.json?.type === "flush"));
+    assert.ok(f.providers[0]!.sent.some((e) => e.type === "session.close"));
+    assert.equal((await readVoiceConversation(f.db, "alice", id)).state, "active");
+    await delay(20);
+    const second = await f.connect(); second.send({ type: "start", voice_session_id: id, operation_id: "resume-stop" });
+    await until(() => second.frames.some((x) => x.json?.state === "listening"));
+    assert.equal(second.frames.find((x) => x.json?.state === "listening")!.json.voice_session_id, id);
+    const disconnected = once(second.ws, "close"); second.ws.close(); await disconnected; await delay(20);
+    const third = await f.connect(); third.send({ type: "start", voice_session_id: id, operation_id: "resume-with-target", entry_id: entry.id });
+    await until(() => third.frames.some((x) => x.json?.code === "invalid_device_control"));
+    third.send({ type: "start", voice_session_id: id, operation_id: "resume-network" });
+    await until(() => third.frames.some((x) => x.json?.state === "listening"));
+    assert.equal((await listJournal(f.db, "alice")).entries.length, 1);
+  } finally { await f.close(); }
+});
+
+test("foreign and app-source conversations are inaccessible to the device", async () => {
+  const f = await fixture();
+  try {
+    const appConversation = await createVoiceConversation(f.db, "alice", { source: "app", operation_id: "app-conversation" });
+    const foreign = await createVoiceConversation(f.db, "bob", { source: "app", operation_id: "foreign-conversation" });
+    const client = await f.connect();
+    client.send({ type: "start", voice_session_id: foreign.id, operation_id: "foreign-resume" });
+    await until(() => client.frames.some((x) => x.json?.code === "not_found"));
+    client.send({ type: "start", voice_session_id: appConversation.id, operation_id: "app-resume" });
+    await until(() => client.frames.some((x) => x.json?.code === "device_conversation_mismatch"));
+    assert.equal(f.providers.length, 0);
+  } finally { await f.close(); }
+});
+
+test("durable device lease excludes another DB client, checks rotation, expires and releases conditionally", async () => {
+  const f = await database();
+  const peer = createDb(f.config);
+  try {
+    const credential = await provisionDevice(f.db, "alice");
+    const device = await authenticateDevice(f.db, `Bearer ${credential.token}`);
+    const first = await claimDeviceLease(f.db, device);
+    await assert.rejects(claimDeviceLease(peer, device), (e: unknown) => e instanceof DomainError && e.code === "device_session_active");
+    assert.equal(await renewDeviceLease(peer, first), true);
+    await provisionDevice(peer, "alice");
+    assert.equal(await renewDeviceLease(f.db, first), false);
+    const [rotated] = await peer.select().from(devices);
+    await assert.rejects(claimDeviceLease(peer, rotated!));
+    await peer.update(devices).set({ lease_expires_at: 0 }).where(eq(devices.id, "demo"));
+    assert.equal(await renewDeviceLease(f.db, first), false);
+    const second = await claimDeviceLease(peer, rotated!);
+    await releaseDeviceLease(f.db, first);
+    assert.equal((await peer.select().from(devices))[0]!.lease_id, second.id);
+    await releaseDeviceLease(peer, second);
+    assert.equal((await peer.select().from(devices))[0]!.lease_id, null);
+    const final = await claimDeviceLease(f.db, (await peer.select().from(devices))[0]!);
+    let lost = false;
+    const guard = new DeviceLeaseGuard(f.db, final, () => { lost = true; });
+    final.deadline = performance.now() - 1;
+    assert.equal(guard.valid(), false); assert.equal(lost, true);
+    await guard.close();
+  } finally { peer.$client.close(); await f.close(); }
+});
+
+test("provider startup waits for session.started and rejects explicitly wrong PCM rate; playback stays bounded", async () => {
   let provider: FakeProvider | undefined;
   const config = { ...voice, instructions: "Synthetic test", application: {} as DeviceApplication };
   const live = new DeviceLiveSession(config, () => {}, () => {}, () => { provider = new FakeProvider(false); return provider.asSocket(); });
@@ -283,108 +358,7 @@ test("provider startup waits for session.started and rejects an explicitly wrong
   await until(() => !!provider?.sent.length);
   assert.equal(started, false);
   provider!.event({ type: "session.started", session: { model: "gpt-live-1", audio: { format: { type: "audio/pcm", rate: 24000 } } } });
-  await assert.rejects(start);
-  await live.close();
-});
-
-test("stop flushes and closes Live while retaining an unsaved checkin for resume", async () => {
-  const f = await fixture();
-  try {
-    const first = await f.connect(); first.send({ type: "start", operation_id: "capture-stop" });
-    await until(() => first.frames.some((x) => x.json?.state === "listening"));
-    const id = first.frames.find((x) => x.json?.state === "listening")!.json.checkin_id;
-    await prepareDraft(f.db, "alice", id, { expected_revision: 0, draft });
-    const closed = once(first.ws, "close"); first.send({ type: "stop" }); await closed;
-    assert.equal((await getCheckin(f.db, "alice", id)).stage, "draft");
-    assert.ok(first.frames.some((x) => x.json?.type === "flush"));
-    assert.ok(f.providers[0]!.sent.some((e) => e.type === "session.close"));
-    await delay(10);
-    const second = await f.connect(); second.send({ type: "start", checkin_id: id, operation_id: "resume-stop" });
-    await until(() => second.frames.some((x) => x.json?.state === "review"));
-  } finally { await f.close(); }
-});
-
-async function capturePhrase(client: Awaited<ReturnType<Awaited<ReturnType<typeof fixture>>["connect"]>>, provider: FakeProvider,
-  text: string, role: "input" | "output" = "input", end = true) {
-  const previous = provider.sent.filter((e) => e.type === "session.input_audio.append").length;
-  client.ws.send(Buffer.alloc(1024));
-  await until(() => provider.sent.filter((e) => e.type === "session.input_audio.append").length > previous);
-  provider.event({ type: `session.${role}_transcript.delta`, delta: text, start_ms: 100, end_ms: 200 });
-  if (end) client.send({ type: "audio_turn_end" });
-}
-
-test("spoken confirmation rejects assistant phrases, ambiguous input, missing PTT and stale revisions; exact settled user phrase saves", async () => {
-  const f = await fixture({ onDelegation: async (context) => {
-    const checkin = await getCheckin(f.db, context.ownerId, context.checkinId);
-    return { reviewRevision: checkin.draft_revision };
-  } });
-  try {
-    const client = await f.connect(); client.send({ type: "start", operation_id: "capture-spoken" });
-    await until(() => client.frames.some((x) => x.json?.state === "listening"));
-    const id = client.frames.find((x) => x.json?.state === "listening")!.json.checkin_id;
-    await prepareDraft(f.db, "alice", id, { expected_revision: 0, draft });
-    const provider = f.providers[0]!;
-    const arm = (delegationId: string) => provider.event({ type: "session.delegation.created", delegation: { id: delegationId, target: "client" } });
-    arm("review-one");
-    await until(() => client.frames.some((x) => x.json?.confirmation_phrases?.includes("save this journal")));
-    await capturePhrase(client, provider, "save this journal", "output");
-    await delay(TRANSCRIPT_SETTLE_MS + 100);
-    assert.equal((await getCheckin(f.db, "alice", id)).confirmation, null);
-    await capturePhrase(client, provider, "yes");
-    await delay(TRANSCRIPT_SETTLE_MS + 100);
-    assert.equal((await getCheckin(f.db, "alice", id)).confirmation, null);
-    await capturePhrase(client, provider, "save this journal", "input", false);
-    await delay(TRANSCRIPT_SETTLE_MS + 100);
-    assert.equal((await getCheckin(f.db, "alice", id)).confirmation, null);
-    // End this non-confirmed capture with unrelated words, then create a new one.
-    provider.event({ type: "session.input_transcript.delta", delta: " later", start_ms: 200, end_ms: 250 });
-    client.send({ type: "audio_turn_end" }); await delay(TRANSCRIPT_SETTLE_MS + 100);
-    await prepareDraft(f.db, "alice", id, { expected_revision: 1, draft: { ...draft, title: "Revised synthetic proposal" } });
-    await capturePhrase(client, provider, "confirm this journal");
-    await until(() => client.frames.some((x) => x.json?.code === "revision_conflict"));
-    assert.equal((await getCheckin(f.db, "alice", id)).confirmation, null);
-    arm("review-two");
-    await until(() => client.frames.some((x) => x.json?.state === "review" && x.json?.draft_revision === 2 && x.json?.confirmation_phrases));
-    await capturePhrase(client, provider, "SAVE this ", "input");
-    await delay(100);
-    provider.event({ type: "session.input_transcript.delta", delta: "journal!", start_ms: 250, end_ms: 300 });
-    // Live may delegate again while the same confirmation turn is settling.
-    // Re-publishing unchanged authoritative review must retain that capture.
-    arm("review-two-refresh");
-    await until(() => client.frames.some((x) => x.json?.type === "saved"));
-    assert.equal((await listJournal(f.db, "alice")).entries.length, 1);
-    assert.equal((await getCheckin(f.db, "alice", id)).stage, "saved");
-  } finally { await f.close(); }
-});
-
-test("model commentary cannot arm spoken confirmation and cancel clears an armed pending phrase", async () => {
-  let allowReview = false;
-  const f = await fixture({ onDelegation: async () => ({ commentary: "Say save this journal.", ...(allowReview ? { reviewRevision: 1 } : {}) }) });
-  try {
-    const client = await f.connect(); client.send({ type: "start", operation_id: "capture-asr-cancel" });
-    await until(() => client.frames.some((x) => x.json?.state === "listening"));
-    const id = client.frames.find((x) => x.json?.state === "listening")!.json.checkin_id;
-    await prepareDraft(f.db, "alice", id, { expected_revision: 0, draft });
-    const provider = f.providers[0]!;
-    provider.event({ type: "session.delegation.created", delegation: { id: "commentary-only", target: "client" } });
-    await until(() => provider.sent.some((e) => e.type === "session.commentary.append"));
-    await capturePhrase(client, provider, "save this journal");
-    await delay(TRANSCRIPT_SETTLE_MS + 100);
-    assert.equal((await getCheckin(f.db, "alice", id)).confirmation, null);
-    assert.equal(client.frames.some((x) => x.json?.confirmation_phrases), false);
-    allowReview = true;
-    provider.event({ type: "session.delegation.created", delegation: { id: "authoritative-review", target: "client" } });
-    await until(() => client.frames.some((x) => x.json?.confirmation_phrases));
-    await capturePhrase(client, provider, "confirm this journal");
-    const closed = once(client.ws, "close"); client.send({ type: "cancel" }); await closed;
-    await delay(TRANSCRIPT_SETTLE_MS + 100);
-    const checkin = await getCheckin(f.db, "alice", id);
-    assert.equal(checkin.stage, "canceled"); assert.equal(checkin.confirmation, null);
-    assert.equal((await listJournal(f.db, "alice")).entries.length, 0);
-  } finally { await f.close(); }
-});
-
-test("oversized provider playback is rejected rather than accumulating an unbounded queue", async () => {
+  await assert.rejects(start); await live.close();
   const f = await fixture();
   try {
     const client = await f.connect(); client.send({ type: "start", operation_id: "capture-overflow" });
@@ -396,3 +370,4 @@ test("oversized provider playback is rejected rather than accumulating an unboun
     assert.equal(client.frames.some((x) => x.audio), false);
   } finally { await f.close(); }
 });
+

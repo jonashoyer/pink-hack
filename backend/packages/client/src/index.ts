@@ -1,15 +1,15 @@
 import { LiveTranscripts, liveOffer, liveThinkingParts, validLiveSession, type LiveEvent } from "./live-protocol";
 export * from "./live-protocol";
 
-export type VoiceSession = { id: string; provider: "azure" | "openai"; model: string; delegation: "client" | "responses"; session: { id: string }; transport: { type: "webrtc"; sdp: string } };
+export type VoiceSession = { id: string; voice_session_id: string; provider: "azure" | "openai"; model: string; delegation: "client" | "responses"; session: { id: string }; transport: { type: "webrtc"; sdp: string } };
 export type VoiceOptions = {
-  apiBaseUrl: string; checkinId: string; sessionToken?: () => string | undefined;
+  apiBaseUrl: string; entryId?: string; sessionToken?: () => string | undefined;
   onStatus: (status: "connecting" | "listening" | "closing" | "closed" | "error") => void;
   onTranscript?: (fragment: NonNullable<ReturnType<LiveTranscripts["append"]>>) => void;
   onError?: (message: string) => void;
   // Azure client delegation has metadata, not task text. The app's agent must
   // use these lossy transcripts and verified backend state, honoring cancellation.
-  onDelegation: (input: { delegationId: string; transcripts: { role: "user" | "assistant"; text: string }[]; checkinId: string; signal: AbortSignal }) => Promise<string>;
+  onDelegation: (input: { delegationId: string; transcripts: { role: "user" | "assistant"; text: string }[]; voiceSessionId: string; entryId?: string; signal: AbortSignal }) => Promise<string>;
 };
 /** Call start() directly from a user action. Supply backend auth, never a provider key. */
 export function createVoiceConnection(options: VoiceOptions) {
@@ -59,7 +59,7 @@ export function createVoiceConnection(options: VoiceOptions) {
     await Promise.all(batch.map(async (call) => {
       let output: unknown;
       try { output = (await post(`/voice/sessions/${session!.id}/tools`, { call_id: call.call_id, name: call.name, arguments: JSON.parse(call.arguments) })).output; }
-      catch { output = { error: "Tool request failed. Read current check-in state before retrying.", saved: false }; }
+      catch { output = { error: "Tool request failed. Read current journal state before retrying.", saved: false }; }
       if (ready) send({ type: "response.item.create", item: { type: "function_call_output", call_id: call.call_id, output: JSON.stringify(output) } });
     }));
     if (ready) send({ type: "response.create" });
@@ -78,8 +78,8 @@ export function createVoiceConnection(options: VoiceOptions) {
     if (!ready) return;
     const transcript = transcripts.append(event);
     if (transcript) {
-      history.set(transcript.id, { role: transcript.role, text: transcript.text.slice(-2000) });
-      while (history.size > 24) history.delete(history.keys().next().value!);
+      history.set(transcript.id, { role: transcript.role, text: transcript.text });
+      if (history.size > 2000 || [...history.values()].reduce((n, part) => n + part.text.length, 0) > 24000) { fail("Conversation context is full. Start a new voice session; no speech was silently dropped."); return; }
       if (transcript.role === "user" && delegationRunning) backendWork?.abort();
       options.onTranscript?.(transcript);
     }
@@ -90,7 +90,14 @@ export function createVoiceConnection(options: VoiceOptions) {
       setTimeout(() => {
         if (!ready || work.signal.aborted) return;
         delegationRunning = true;
-        void options.onDelegation({ delegationId, transcripts: [...history.values()], checkinId: options.checkinId, signal: work.signal }).then((result) => {
+        const turns: { role: "user" | "assistant"; text: string }[] = [];
+        for (const part of history.values()) {
+          const last = turns.at(-1);
+          if (last?.role === part.role) last.text += part.text;
+          else turns.push({ ...part });
+        }
+        if (turns.length > 24) { fail("Conversation context is full. Start a new voice session."); return; }
+        void options.onDelegation({ delegationId, transcripts: turns, voiceSessionId: session!.voice_session_id, entryId: options.entryId, signal: work.signal }).then((result) => {
           if (ready && !work.signal.aborted) liveThinkingParts(result, delegationId).forEach(send);
         }).catch(() => {
           if (ready && !work.signal.aborted) liveThinkingParts("The backend task failed. No successful save is confirmed. Ask the user to review the app or retry.", delegationId).forEach(send);
@@ -122,7 +129,7 @@ export function createVoiceConnection(options: VoiceOptions) {
         channel.addEventListener("message", ({ data }) => { try { eventHandler(JSON.parse(data)); } catch { fail("Voice returned an unreadable event."); } });
         channel.addEventListener("close", () => { if (ready) fail("Voice disconnected before finalization was confirmed."); });
         const sdp = await liveOffer(peer, startup.signal);
-        session = await post("/voice/sessions", { checkin_id: options.checkinId, operation_id: crypto.randomUUID(), transport: { type: "webrtc", sdp } }, startup.signal) as VoiceSession;
+        session = await post("/voice/sessions", { ...(options.entryId ? { entry_id: options.entryId } : {}), operation_id: crypto.randomUUID(), transport: { type: "webrtc", sdp } }, startup.signal) as VoiceSession;
         const started = new Promise<void>((resolve, reject) => { readyResolver = resolve; readyRejecter = reject; readyTimer = setTimeout(() => fail("Voice startup timed out."), 20000); });
         await peer.setRemoteDescription({ type: "answer", sdp: session.transport.sdp });
         await started;

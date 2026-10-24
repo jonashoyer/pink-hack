@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "fluid": true,
+  "functions": {
+    "api/server.mjs": { "maxDuration": 300 },
+    "api/device.mjs": { "maxDuration": 300 }
+  },
+  "rewrites": [
+    { "source": "/api/v1/device/audio", "destination": "/api/device" },
+    { "source": "/(.*)", "destination": "/api/server" }
+  ]
+}

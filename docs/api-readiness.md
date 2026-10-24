@@ -8,7 +8,15 @@ Research date: 2026-10-24. Workspace revision: `502e43af5377a6553ff17a365e73859a
 
 The configured Azure `gpt-live-1` access test passed using the repository root `.env`. A real primary Live WebSocket produced `session.started`, then `session.closed` after graceful shutdown. Audio, tool execution, journal integration, and Atech remain untested. The earlier Azure Realtime rejection was the wrong protocol for this deployment and is superseded as a GPT-Live blocker. A direct OpenAI project key is not required for this configured Azure path.
 
-The latest requirement is voice through Atech's microphone and speaker. A browser microphone test would not satisfy it. The earlier [platform context](gpt_live_atech_lovable_context.md) leaves voice location open; the current user brief resolves that requirement to Atech device voice. Whether a laptop or persistent server bridges the device remains an implementation decision.
+The latest requirement is voice through Atech's microphone and speaker. A browser microphone test would not satisfy it. Hosting is the existing Vercel project with existing Turso storage; Vercel device-WSS capability and real audio remain separate verification gaps. Earlier laptop/VM hosting proposals are superseded.
+
+## Current application deployment
+
+The backend owner reports direct Journal domain/agent/device integration in the current tree, without held proposals or a speech-confirmation gate. Source inspection confirms Journal POST, revision-checked PATCH, and the owned `POST /api/v1/voice/sessions/:id/agent` callback returning `{text,entries}`. The latest client uses `voice_session_id` and optional entry targets instead of a check-in dependency.
+
+The backend owner externally verified production `https://pink-hack.vercel.app`, deployment `dpl_Ak43VzrcBBiwjuD27reY4y6e4WNF`, immutable host `https://pink-hack-38g1zdff7-quasr.vercel.app`. Health returned 200 and unauthenticated API access 401. Authenticated Better Auth session, real Turso direct Journal POST/reload/PATCH, exact retry, conflicting payload, and stale revision checks passed. Both `http://localhost:8080` and canonical public Lovable preview CORS/trusted origins passed. This supersedes the earlier pending-deployment diagnostics.
+
+Additive Turso migration passed with a private pre-migration backup, unchanged legacy row counts, and an empty foreign-key check. Current client modules and direct voice callback are frozen for frontend wiring. Device WSS rejected an unauthenticated request with 401, but authenticated upgrade, PCM audio, and full frontend voice/agent behavior remain unverified by this report. These production checks were run by the backend owner; this thread did not duplicate them or repeat paid startup/provisioning.
 
 ## Corrected Azure GPT-Live access probe
 

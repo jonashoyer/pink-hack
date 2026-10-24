@@ -67,7 +67,7 @@ The [backend owner](t3-thread://v1/dac033a2-a1c4-48ee-a7cb-39cb86afe1a7) retains
 
 Azure Live access passed a real startup and graceful-close probe. Earlier backend tests covered the staged/flexible foundation and do not prove direct-write integration. [Backend documentation](docs/backend.md) records actual endpoints and evidence as its owner updates them.
 
-The backend is moving to the existing Vercel project with Turso preserved. Previous Azure VM origins are not current frontend/device targets. A verified Vercel API URL and device WSS capability remain for the backend owner to report. The Vercel dashboard URL is not the runtime API URL.
+Production HTTP is verified at `https://pink-hack.vercel.app`, deployment `dpl_Ak43VzrcBBiwjuD27reY4y6e4WNF`. The backend owner verified health, authentication, real Turso direct Journal create/reload/update, exact retry, changed-payload conflict, and stale revision rejection. Turso migration preserved legacy row counts with a private backup and empty foreign-key check. The fixed host and frozen client are being wired by the sole frontend owner. Real frontend voice/agent and authenticated device audio remain separate verification work; an unauthenticated WSS 401 does not establish audio. Previous Azure VM origins are not current targets.
 
 ## Acceptance
 

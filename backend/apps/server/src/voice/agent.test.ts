@@ -125,9 +125,11 @@ test("response revisions are re-read from storage after tool execution", async (
     const request = await input(db);
     const provider = mock([create(), answer()]);
     let round = 0;
+    let initialRevision = -1;
     const fetcher: typeof fetch = async (url, init) => {
       if (round++ === 1) {
         const entry = (await listJournal(db, "alice", {})).entries[0]!;
+        initialRevision = entry.revision;
         await patchJournalEntry(db, "alice", entry.id, { expected_revision: entry.revision, operation_id: "concurrent-edit", title: "Updated by authenticated editor" });
       }
       return provider(url, init);
@@ -136,7 +138,7 @@ test("response revisions are re-read from storage after tool execution", async (
     const entry = await getJournalEntry(db, "alice", output.entries[0]!.id);
     assert.equal(entry.title, "Updated by authenticated editor");
     assert.deepEqual(output.entries, [{ id: entry.id, revision: entry.revision }]);
-    assert.equal(entry.revision, 1);
+    assert.equal(entry.revision, initialRevision + 1);
   } finally { await close(); }
 });
 
@@ -198,6 +200,22 @@ test("stable delegation/tool IDs replay creation across requests without duplica
     const third = await runJournalAgent(db, config, { ...request, delegationId: "different-delegation" }, undefined, mock([create(), answer()]));
     assert.notEqual(third.entries[0]!.id, first.entries[0]!.id);
     assert.equal((await listJournal(db, "alice", {})).entries.length, 2);
+  } finally { await close(); }
+});
+
+test("duplicate calls in one provider response produce one write and one continuation call", async () => {
+  const { db, close } = await setup();
+  try {
+    const request = await input(db);
+    const call = tool("duplicate", "create_journal_entry", journal);
+    const output = await runJournalAgent(db, config, request, undefined, mock([use(call, call), answer()], (body, round) => {
+      if (round === 1) {
+        assert.equal(body.messages[1].content.filter((block: any) => block.type === "tool_use").length, 1);
+        assert.equal(body.messages[2].content.length, 1);
+      }
+    }));
+    assert.equal(output.entries.length, 1);
+    assert.equal((await listJournal(db, "alice", {})).entries.length, 1);
   } finally { await close(); }
 });
 
