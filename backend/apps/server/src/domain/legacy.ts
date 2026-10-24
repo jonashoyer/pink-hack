@@ -1,10 +1,11 @@
 import { randomUUID, createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { Database } from "@backend/db";
-import { contextPages, pages, journalEntries, checkinSessions, observations, dayPlans, operationReceipts } from "@backend/db/schema/journal";
+import { contextPages, pages, journalEntries, checkinSessions, observations, dayPlans, operationReceipts, journalDocuments } from "@backend/db/schema/journal";
 import type { BlockContent, PageSection, LegacyJournalDraft, JournalDraft, JournalProperties, JsonValue, PlanItem, JournalEntryResult } from "@backend/db/schema/journal";
 import { journalDraftSchema, blockContentSchema, propertiesSchema } from "./contracts";
 import { DomainError } from "./errors";
+import type { Store } from "./store";
 import { write, fingerprint } from "./store";
 
 function blockId(source: string, index: number) { return `legacy-${createHash("sha256").update(`${source}:${index}`).digest("hex").slice(0, 24)}`; }
@@ -60,8 +61,28 @@ export function blocksToText(content: BlockContent): string {
 function assertConvertible(content: BlockContent, properties: JournalProperties) {
   if (!blockContentSchema.safeParse(content).success || !propertiesSchema.safeParse(properties).success) throw new DomainError(409, "legacy_conversion_invalid", "Legacy data exceeds the flexible document limits. No records were converted; retain the original data for explicit review.");
 }
-// Explicit administrator/startup migration. It never runs implicitly on reads.
-// All owners are converted in one transaction; original legacy records remain.
+export function canonicalJournalResult(row: typeof journalDocuments.$inferSelect): JournalEntryResult {
+  const { legacy_entry_id: _legacy, ...result } = row;
+  return result;
+}
+export async function copyLegacyJournalEntry(tx: Store, entry: typeof journalEntries.$inferSelect) {
+  const [existing] = await tx.select().from(journalDocuments).where(eq(journalDocuments.id, entry.id));
+  if (existing) {
+    if (existing.owner_id !== entry.owner_id) throw new DomainError(409, "legacy_identity_conflict", "Legacy journal identity conflicts with a canonical record.");
+    return canonicalJournalResult(existing);
+  }
+  const reported = await tx.select().from(observations).where(and(eq(observations.owner_id, entry.owner_id), eq(observations.entry_id, entry.id)));
+  const plans = await tx.select().from(dayPlans).where(and(eq(dayPlans.owner_id, entry.owner_id), eq(dayPlans.entry_id, entry.id)));
+  const converted = convertLegacyJournal(entry.note, reported, plans, entry.id);
+  const content = entry.content ?? converted.content;
+  const properties = entry.properties ?? converted.properties;
+  assertConvertible(content, properties);
+  const [capture] = await tx.select({ device_id: checkinSessions.device_id }).from(checkinSessions).where(and(eq(checkinSessions.id, entry.session_id), eq(checkinSessions.owner_id, entry.owner_id)));
+  const [copied] = await tx.insert(journalDocuments).values({ id: entry.id, owner_id: entry.owner_id, title: entry.title, original_text: entry.original_text, content, properties, source: entry.source, device_id: capture?.device_id ?? null, journal_date: entry.journal_date, capture_id: entry.session_id, session_id: entry.session_id, legacy_entry_id: entry.id, operation_id: entry.operation_id, context_revisions: entry.context_revisions, revision: entry.revision, created_at: entry.created_at, updated_at: entry.updated_at }).returning();
+  return canonicalJournalResult(copied!);
+}
+// Explicit administrator/startup migration. Legacy journal rows are copied,
+// never overwritten or deleted. Existing canonical corrections always win.
 export async function migrateLegacyData(db: Database) {
   return write(db, async (tx) => {
     const counts = { pages: 0, journal_entries: 0, pending_drafts: 0 };
@@ -74,15 +95,9 @@ export async function migrateLegacyData(db: Database) {
       counts.pages++;
     }
     for (const entry of await tx.select().from(journalEntries)) {
-      if (entry.content !== null && entry.properties !== null) continue;
-      const reported = await tx.select().from(observations).where(and(eq(observations.owner_id, entry.owner_id), eq(observations.entry_id, entry.id)));
-      const plans = await tx.select().from(dayPlans).where(and(eq(dayPlans.owner_id, entry.owner_id), eq(dayPlans.entry_id, entry.id)));
-      const converted = convertLegacyJournal(entry.note, reported, plans, entry.id);
-      const content = entry.content ?? converted.content;
-      const properties = entry.properties ?? converted.properties;
-      assertConvertible(content, properties);
-      await tx.update(journalEntries).set({ content, properties }).where(and(eq(journalEntries.id, entry.id), eq(journalEntries.owner_id, entry.owner_id)));
-      counts.journal_entries++;
+      const [existing] = await tx.select({ id: journalDocuments.id }).from(journalDocuments).where(and(eq(journalDocuments.id, entry.id), eq(journalDocuments.owner_id, entry.owner_id)));
+      await copyLegacyJournalEntry(tx, entry);
+      if (!existing) counts.journal_entries++;
     }
     for (const checkin of await tx.select().from(checkinSessions)) {
       if (!checkin.draft || "content" in checkin.draft || checkin.stage === "saved" || checkin.stage === "canceled") continue;
@@ -102,10 +117,9 @@ export async function migrateLegacyData(db: Database) {
         if (existing.request_hash !== hash) throw new DomainError(409, "legacy_operation_conflict", "Legacy save operation conflicts with an existing receipt. No records were converted.");
         continue;
       }
-      const [entry] = await tx.select().from(journalEntries).where(and(eq(journalEntries.id, checkin.saved_entry_id), eq(journalEntries.owner_id, checkin.owner_id)));
-      if (!entry || entry.content === null || entry.properties === null) throw new DomainError(409, "legacy_conversion_invalid", "Legacy saved check-in references an unavailable entry. No records were converted.");
-      const { note: _note, ...rest } = entry;
-      const result: JournalEntryResult = { ...rest, content: entry.content, properties: entry.properties };
+      const [entry] = await tx.select().from(journalDocuments).where(and(eq(journalDocuments.id, checkin.saved_entry_id), eq(journalDocuments.owner_id, checkin.owner_id)));
+      if (!entry) throw new DomainError(409, "legacy_conversion_invalid", "Legacy saved check-in references an unavailable entry. No records were converted.");
+      const result = canonicalJournalResult(entry);
       await tx.insert(operationReceipts).values({ id: randomUUID(), owner_id: checkin.owner_id, operation_id: confirmation.operation_id, request_hash: hash, result, created_at: entry.created_at });
     }
     return counts;

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Database } from "@backend/db";
 import type { z } from "zod";
-import { DomainError, validate, pageCreateSchema, pagePatchSchema, pageArchiveSchema, pageQuerySchema, profilePatchSchema, createCheckinSchema, prepareDraftSchema, updateDraftSchema, confirmSchema, commitSchema, cancelSchema, journalPatchSchema, journalQuerySchema, getContext, listPages, getPage, createPage, patchPage, archivePage, patchProfile, createCheckin, getCheckin, prepareDraft, prepareJournalUpdate, confirmDraft, commitCheckin, cancelCheckin, listJournal, getJournalEntry, patchJournalEntry } from "../domain/journal";
+import { DomainError, validate, pageCreateSchema, pagePatchSchema, pageArchiveSchema, pageQuerySchema, profilePatchSchema, createCheckinSchema, prepareDraftSchema, updateDraftSchema, confirmSchema, commitSchema, cancelSchema, journalPatchSchema, journalCreateSchema, journalQuerySchema, getContext, listPages, getPage, createPage, patchPage, archivePage, patchProfile, createCheckin, getCheckin, prepareDraft, prepareJournalUpdate, confirmDraft, commitCheckin, cancelCheckin, listJournal, getJournalEntry, patchJournalEntry, createJournalEntry } from "../domain/journal";
 
 type Env = { Variables: { userId: string } };
 async function body<T>(c: Context<Env>, schema: z.ZodType<T>, emptyAllowed = false): Promise<T> {
@@ -34,6 +34,7 @@ export function createJournalRoutes(db: Database): Hono<Env> {
   app.post("/checkins/:id/confirm", async (c) => c.json(await confirmDraft(db, c.get("userId"), c.req.param("id"), await body(c, confirmSchema))));
   app.post("/checkins/:id/commit", async (c) => c.json(await commitCheckin(db, c.get("userId"), c.req.param("id"), await body(c, commitSchema))));
   app.post("/checkins/:id/cancel", async (c) => { await body(c, cancelSchema, true); return c.json(await cancelCheckin(db, c.get("userId"), c.req.param("id"))); });
+  app.post("/journal", async (c) => c.json(await createJournalEntry(db, c.get("userId"), await body(c, journalCreateSchema))));
   app.get("/journal", async (c) => c.json(await listJournal(db, c.get("userId"), validate(journalQuerySchema, c.req.query()))));
   app.get("/journal/:id", async (c) => c.json(await getJournalEntry(db, c.get("userId"), c.req.param("id"))));
   app.patch("/journal/:id", async (c) => c.json(await patchJournalEntry(db, c.get("userId"), c.req.param("id"), await body(c, journalPatchSchema))));

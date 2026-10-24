@@ -1,21 +1,20 @@
 import type { Database } from "@backend/db";
 import { z } from "zod";
 import { DomainError } from "../domain/errors";
-import { getCheckin, getVoiceContext } from "../domain/journal";
+import { getConversationContext, getJournalEntry } from "../domain/journal";
 import { recordIdSchema, validate } from "../domain/contracts";
 import { buildBackendInstructions } from "./prompts";
 import { dispatchJournalTool, journalToolDefinitions } from "./tools";
 
 export type JournalAgentConfig = { ANTHROPIC_API_KEY?: string };
-export type JournalAgentInput = { ownerId: string; checkinId: string; messages: Array<{ role: "user" | "assistant"; content: string }> };
+export type JournalAgentInput = { ownerId: string; voiceSessionId: string; delegationId: string; entryId?: string; messages: Array<{ role: "user" | "assistant"; content: string }> };
 export const journalAgentRequestSchema = z.object({
+  delegation_id: z.string().min(1).max(200), entry_id: recordIdSchema.optional(),
   messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().trim().min(1).max(24_000) }).strict()).min(1).max(24),
 }).strict().refine(({ messages }) => messages.reduce((n, m) => n + m.content.length, 0) <= 24_000);
 export const journalAgentResponseSchema = z.object({
-  text: z.string().trim().min(1).max(4_000), checkin_id: recordIdSchema,
-  draft_revision: z.number().int().nonnegative(),
-  stage: z.enum(["created", "draft", "awaiting_confirmation", "saved", "canceled"]),
-  saved_entry_id: recordIdSchema.nullable(),
+  text: z.string().trim().min(1).max(4_000),
+  entries: z.array(z.object({ id: recordIdSchema, revision: z.number().int().nonnegative() }).strict()).max(12),
 }).strict();
 export type JournalAgentResult = z.infer<typeof journalAgentResponseSchema>;
 
@@ -77,46 +76,54 @@ function transcript(messages: JournalAgentInput["messages"]): Message[] {
   // Live transcripts can omit the start or end of a conversation. These markers
   // establish provider message ordering without inventing user statements.
   if (merged[0]?.role === "assistant") merged.unshift({ role: "user", content: "The following is an incomplete voice transcript. Use it only as conversation context." });
-  if (merged.at(-1)?.role === "assistant") merged.push({ role: "user", content: "Continue from the incomplete transcript using current server context. This marker is not confirmation." });
+  if (merged.at(-1)?.role === "assistant") merged.push({ role: "user", content: "Continue from the incomplete transcript using current server context. This marker is not a request to write." });
   return merged;
 }
-async function result(db: Database, input: JournalAgentInput, text: string, prepared: boolean): Promise<JournalAgentResult> {
-  const state = await getCheckin(db, input.ownerId, input.checkinId);
-  if (state.stage === "saved" && state.saved_entry_id) text = "Your journal entry is saved.";
-  else if (state.stage === "canceled") text = "The check-in is canceled.";
-  else if (prepared && state.draft) text = "I've prepared your journal draft. Would you like to save it?";
-  else if (/\b(saved|committed)\b/i.test(text)) text = state.draft ? "Your journal draft is ready. Would you like to save it?" : "Your journal entry has not been saved. What would you like to record?";
-  const parsed = journalAgentResponseSchema.safeParse({ text, checkin_id: state.id, draft_revision: state.draft_revision, stage: state.stage, saved_entry_id: state.saved_entry_id });
+async function result(db: Database, input: JournalAgentInput, text: string, writtenIds: Set<string>): Promise<JournalAgentResult> {
+  const entries: JournalAgentResult["entries"] = [];
+  for (const id of writtenIds) {
+    const entry = await getJournalEntry(db, input.ownerId, id);
+    entries.push({ id: entry.id, revision: entry.revision });
+  }
+  if (entries.length) text = entries.length === 1 ? "Your journal entry is saved." : "Your journal entries are saved.";
+  else if (/\b(saved|committed)\b/i.test(text)) text = "I haven't saved any changes this turn. What would you like to record?";
+  const parsed = journalAgentResponseSchema.safeParse({ text, entries });
   if (!parsed.success) throw unavailable();
   return parsed.data;
 }
 
-/** Application reasoning for Live client delegation. Only storage can authorize a commit. */
+/** Application reasoning for Live delegation, using owner-bound direct journal services. */
 export async function runJournalAgent(db: Database, config: JournalAgentConfig, input: JournalAgentInput, signal?: AbortSignal, fetcher: typeof fetch = fetch): Promise<JournalAgentResult> {
   const activeSignal = signal ? AbortSignal.any([signal, AbortSignal.timeout(45_000)]) : AbortSignal.timeout(45_000);
   try {
     checkAbort(activeSignal);
     validate(recordIdSchema, input.ownerId);
-    validate(recordIdSchema, input.checkinId);
-    const request = validate(journalAgentRequestSchema, { messages: input.messages });
+    validate(recordIdSchema, input.voiceSessionId);
+    const request = validate(journalAgentRequestSchema, { delegation_id: input.delegationId, entry_id: input.entryId, messages: input.messages });
     const key = config.ANTHROPIC_API_KEY?.trim();
     if (!key) throw new DomainError(503, "assistant_not_configured", "The application assistant is not configured.");
-    const context = await getVoiceContext(db, input.ownerId, input.checkinId);
+    const context = await getConversationContext(db, input.ownerId, input.voiceSessionId);
     checkAbort(activeSignal);
-    boundedJson(context);
-    const system = buildBackendInstructions(context);
+    const targetEntry = request.entry_id ? await getJournalEntry(db, input.ownerId, request.entry_id) : undefined;
+    checkAbort(activeSignal);
+    const runtimeContext = targetEntry ? { ...context, target_entry: targetEntry } : context;
+    boundedJson(runtimeContext);
+    const system = buildBackendInstructions(runtimeContext);
     const messages = transcript(request.messages);
     const tools = journalToolDefinitions.map(({ name, description, parameters }) => ({ name, description, input_schema: parameters }));
     const seen = new Map<string, { request: string; content: string }>();
     let count = 0;
-    let prepared = false;
+    const writtenIds = new Set<string>();
     for (let round = 0; round < 4; round++) {
       checkAbort(activeSignal);
-      const response = await fetcher("https://api.anthropic.com/v1/messages", {
-        method: "POST", cache: "no-store", signal: activeSignal,
-        headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "claude-haiku-5-5", max_tokens: 1_024, system, messages, tools }),
-      });
+      let response: Response;
+      try {
+        response = await fetcher("https://api.anthropic.com/v1/messages", {
+          method: "POST", cache: "no-store", signal: activeSignal,
+          headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "Content-Type": "application/json" },
+          body: JSON.stringify({ model: "claude-haiku-5-5", max_tokens: 1_024, system, messages, tools }),
+        });
+      } catch { checkAbort(activeSignal); throw unavailable(); }
       checkAbort(activeSignal);
       if (!response.ok) { await response.body?.cancel().catch(() => undefined); throw unavailable(); }
       const generated = providerSchema.safeParse(await providerJson(response, activeSignal));
@@ -126,7 +133,9 @@ export async function runJournalAgent(db: Database, config: JournalAgentConfig, 
         const text = generated.data.content.filter((block) => block.type === "text").map((block) => block.text).join("\n").trim();
         if (generated.data.stop_reason !== "end_turn" || !text || text.length > 4_000) throw unavailable();
         checkAbort(activeSignal);
-        return await result(db, input, text, prepared);
+        const output = await result(db, input, text, writtenIds);
+        checkAbort(activeSignal);
+        return output;
       }
       if (generated.data.stop_reason !== "tool_use" || calls.length > 4 || round === 3 || count + calls.length > 12) throw unavailable();
       const results: ToolResult[] = [];
@@ -139,18 +148,17 @@ export async function runJournalAgent(db: Database, config: JournalAgentConfig, 
         if (cached && cached.request !== requestKey) throw new DomainError(409, "tool_call_conflict", "A tool call ID was reused for a different request.");
         let content = cached?.content;
         if (content === undefined) {
-          if (call.name === "commit_journal_entry") {
-            const state = await getCheckin(db, input.ownerId, input.checkinId);
-            const receipt = state.confirmation;
-            if (!receipt || receipt.draft_revision !== state.draft_revision || receipt.receipt !== call.input.confirmation_receipt || receipt.operation_id !== call.input.operation_id) {
-              throw new DomainError(409, "confirmation_required", "Confirm the current draft through the authenticated client before saving.");
-            }
-          }
-          // No tool, including draft/context writes, starts after cancellation.
+          // The dispatcher derives action IDs from this owned session and the
+          // provider call ID, validates inputs and enforces entry revisions.
           checkAbort(activeSignal);
-          content = boundedJson(await dispatchJournalTool(db, input.ownerId, input.checkinId, call.name, call.input));
+          const executed = await dispatchJournalTool(db, input.ownerId, input.voiceSessionId, call.name, call.input, `${input.delegationId}:${call.id}`);
+          content = boundedJson(executed);
+          if (call.name === "create_journal_entry" || call.name === "update_journal_entry") {
+            const persisted = z.object({ id: recordIdSchema }).safeParse(executed);
+            if (!persisted.success) throw unavailable();
+            writtenIds.add(persisted.data.id);
+          }
           seen.set(call.id, { request: requestKey, content });
-          if (call.name === "prepare_journal_draft" || call.name === "prepare_journal_update") prepared = true;
         }
         if (!roundIds.has(call.id)) results.push({ type: "tool_result", tool_use_id: call.id, content });
         roundIds.add(call.id);

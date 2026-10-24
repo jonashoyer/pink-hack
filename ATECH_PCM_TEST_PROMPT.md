@@ -29,4 +29,4 @@ PASS requires a person to hear the same phrase clearly, test interruption,
 and repeat without memory growth. Compilation or numeric levels alone cannot pass.
 ```
 
-Hardware playback is untested. After a physical pass, use [the demo connection prompt](ATECH_PROMPT.md).
+Hardware playback is untested. After a physical pass, keep the results and wait for the verified Vercel contract before using [the connection prompt](ATECH_PROMPT.md).

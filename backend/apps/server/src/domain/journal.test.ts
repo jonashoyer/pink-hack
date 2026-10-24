@@ -13,7 +13,7 @@ import { sql, is, SQL, eq } from "drizzle-orm";
 import type { Database } from "@backend/db";
 import { Hono } from "hono";
 import { createJournalRoutes } from "../routes/journal";
-import { DomainError, getContext, patchPage, patchProfile, createCheckin, getCheckin, prepareDraft, confirmDraft, commitCheckin, cancelCheckin, getJournalEntry, listJournal, getVoiceContext, journalDate, journalDraftSchema, blockContentSchema, propertiesSchema, createPage, getPage, listPages, archivePage, patchJournalEntry, prepareJournalUpdate, migrateLegacyData, createDeviceCheckin, normalizeLegacyDraft, blocksToText } from "./journal";
+import { DomainError, getContext, patchPage, patchProfile, createCheckin, getCheckin, prepareDraft, confirmDraft, commitCheckin, cancelCheckin, getJournalEntry, listJournal, getVoiceContext, journalDate, journalDraftSchema, blockContentSchema, propertiesSchema, createPage, getPage, listPages, archivePage, patchJournalEntry, prepareJournalUpdate, migrateLegacyData, createDeviceCheckin, createJournalEntry, createVoiceConversation, readVoiceConversation, getConversationContext, createJournalForConversation, patchJournalForConversation, stopVoiceConversation, normalizeLegacyDraft, blocksToText } from "./journal";
 
 // Test-only DDL derives from actual table definitions, without migrations or
 // touching the application database. All stored content is synthetic.
@@ -250,7 +250,7 @@ test("legacy migration is atomic and idempotent; preserves records, original tex
     assert.equal(normalizeLegacyDraft(legacyDraft).properties.energy, "low");
     assert.equal((await getJournalEntry(db, "alice", "legacy-entry")).properties.energy, "low");
     const before = { pages: await db.select().from(tables.contextPages), observations: await db.select().from(tables.observations), plans: await db.select().from(tables.dayPlans) };
-    assert.deepEqual(await migrateLegacyData(db), { pages: 1, journal_entries: 1, pending_drafts: 1 });
+    assert.deepEqual(await migrateLegacyData(db), { pages: 1, journal_entries: 0, pending_drafts: 1 });
     const entry = await getJournalEntry(db, "alice", "legacy-entry");
     assert.equal(entry.properties.energy, "low");
     assert.equal(entry.original_text, "Unmodified original");
@@ -362,5 +362,125 @@ test("standalone route accepts a valid draft above 256 KiB within the shared 512
     const response = await app.request(`/api/v1/checkins/${checkin.id}/draft`, { method: "PUT", headers: { "Content-Type": "application/json" }, body });
     assert.equal(response.status, 200);
     assert.equal((await getCheckin(db, "alice", checkin.id)).draft!.original_text, largeDraft.original_text);
+  } finally { await close(); }
+});
+
+test("direct journal POST saves immediately without check-ins and replays the original result", async () => {
+  const { db, close } = await setup();
+  try {
+    const input = { title: draft.title, content: draft.content, properties: draft.properties, original_text: draft.original_text, operation_id: "direct-create" };
+    const app = new Hono<{ Variables: { userId: string } }>();
+    app.use("*", async (c, next) => { c.set("userId", "alice"); await next(); });
+    app.route("/api/v1", createJournalRoutes(db));
+    app.onError((error, c) => c.json({ code: error instanceof DomainError ? error.code : "unexpected" }, error instanceof DomainError ? error.status as 400 : 500));
+    const response = await app.request("/api/v1/journal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
+    assert.equal(response.status, 200);
+    const entry = await response.json() as tables.JournalEntryResult;
+    assert.equal(entry.source, "app");
+    assert.equal(entry.session_id, null);
+    assert.ok(entry.capture_id);
+    assert.deepEqual(entry.content, input.content);
+    assert.equal((await db.select().from(tables.checkinSessions)).length, 0);
+    assert.equal((await db.select().from(tables.journalEntries)).length, 0);
+    assert.equal((await db.select().from(tables.journalDocuments)).length, 1);
+    await patchJournalEntry(db, "alice", entry.id, { expected_revision: 1, operation_id: "direct-patch", title: "Later correction" });
+    assert.deepEqual(await createJournalEntry(db, "alice", input), entry);
+    await assert.rejects(createJournalEntry(db, "alice", { ...input, title: "Changed" }), rejects("operation_conflict"));
+    await assert.rejects(getJournalEntry(db, "bob", entry.id), rejects("not_found"));
+    assert.equal((await listJournal(db, "bob")).entries.length, 0);
+    assert.equal((await listJournal(db, "alice")).entries[0]!.title, "Later correction");
+    const withoutOriginal = await createJournalEntry(db, "alice", { title: "No selected text", content: [], properties: {}, operation_id: "optional-original" });
+    assert.equal(withoutOriginal.original_text, "");
+  } finally { await close(); }
+});
+
+test("conversation writes update metadata atomically and use all custom context without drafts", async () => {
+  const { db, close } = await setup();
+  try {
+    const page = await createPage(db, "alice", { title: "Anything that matters", content, operation_id: "conversation-page" });
+    const input = { source: "app" as const, operation_id: "conversation-create" };
+    const conversation = await createVoiceConversation(db, "alice", input);
+    const context = await getConversationContext(db, "alice", conversation.id);
+    assert.equal(context.pages[0]!.id, page.id);
+    assert.equal(context.conversation.id, conversation.id);
+    const create = { title: draft.title, content: draft.content, properties: draft.properties, operation_id: "conversation-save" };
+    const entry = await createJournalForConversation(db, "alice", conversation.id, create);
+    assert.equal(entry.voice_conversation_id, conversation.id);
+    assert.equal(entry.session_id, null);
+    assert.equal((await readVoiceConversation(db, "alice", conversation.id)).last_entry_id, entry.id);
+    assert.equal((await readVoiceConversation(db, "alice", conversation.id)).saved_entry_id, entry.id);
+    const patch = { expected_revision: 1, operation_id: "conversation-update", properties: { "new property": 7 } };
+    const updated = await patchJournalForConversation(db, "alice", conversation.id, entry.id, patch);
+    assert.equal(updated.revision, 2);
+    assert.deepEqual(updated.content, entry.content);
+    assert.deepEqual(await patchJournalForConversation(db, "alice", conversation.id, entry.id, patch), updated);
+    assert.deepEqual(await createJournalForConversation(db, "alice", conversation.id, create), entry);
+    assert.deepEqual(await createVoiceConversation(db, "alice", input), conversation);
+    await assert.rejects(patchJournalForConversation(db, "alice", conversation.id, entry.id, { expected_revision: 1, operation_id: "stale-conversation-update", title: "Stale" }), rejects("revision_conflict"));
+    await assert.rejects(readVoiceConversation(db, "bob", conversation.id), rejects("not_found"));
+    await assert.rejects(createJournalForConversation(db, "bob", conversation.id, { ...create, operation_id: "foreign-conversation-write" }), rejects("not_found"));
+    assert.equal((await getConversationContext(db, "alice", conversation.id)).recent_journal_entries[0]!.id, entry.id);
+    assert.equal((await db.select().from(tables.checkinSessions)).length, 0);
+    assert.equal((await db.select().from(tables.journalEntries)).length, 0);
+    await stopVoiceConversation(db, "alice", conversation.id);
+    await assert.rejects(getConversationContext(db, "alice", conversation.id), rejects("conversation_stopped"));
+    await assert.rejects(createJournalForConversation(db, "alice", conversation.id, { ...create, operation_id: "stopped-create" }), rejects("conversation_stopped"));
+    assert.deepEqual(await createJournalForConversation(db, "alice", conversation.id, create), entry);
+  } finally { await close(); }
+});
+
+test("conversation target is owner-validated and direct edits preserve legacy source records", async () => {
+  const { db, close } = await setup();
+  try {
+    const { entry } = await saved(db, "legacy-compatible");
+    const legacyBefore = await db.select().from(tables.journalEntries);
+    const captureBefore = await db.select().from(tables.checkinSessions);
+    await assert.rejects(createVoiceConversation(db, "bob", { source: "app", entry_id: entry.id, operation_id: "foreign-target" }), rejects("not_found"));
+    const conversation = await createVoiceConversation(db, "alice", { source: "app", entry_id: entry.id, operation_id: "target-create" });
+    assert.equal(conversation.target_entry_id, entry.id);
+    await assert.rejects(createJournalForConversation(db, "alice", conversation.id, { title: "New", content: [], properties: {}, operation_id: "wrong-create" }), rejects("conversation_target_exists"));
+    const other = await createJournalEntry(db, "alice", { title: "Other", content: [], properties: {}, operation_id: "other-create" });
+    await assert.rejects(patchJournalForConversation(db, "alice", conversation.id, other.id, { expected_revision: 1, operation_id: "wrong-target", title: "Wrong" }), rejects("conversation_target_conflict"));
+    const updated = await patchJournalForConversation(db, "alice", conversation.id, entry.id, { expected_revision: 1, operation_id: "target-update", title: "Corrected legacy page" });
+    assert.equal(updated.id, entry.id);
+    assert.equal(updated.original_text, entry.original_text);
+    assert.deepEqual(await db.select().from(tables.journalEntries), legacyBefore);
+    assert.deepEqual(await db.select().from(tables.checkinSessions), captureBefore);
+    await migrateLegacyData(db);
+    assert.equal((await getJournalEntry(db, "alice", entry.id)).title, updated.title);
+    assert.deepEqual(await db.select().from(tables.journalEntries), legacyBefore);
+  } finally { await close(); }
+});
+
+test("conversation failure after document write rolls back both document and last-entry metadata", async () => {
+  const { db, close } = await setup();
+  try {
+    const conversation = await createVoiceConversation(db, "alice", { source: "app", operation_id: "atomic-conversation" });
+    const input = { title: "Atomic save", content: [], properties: {}, operation_id: "atomic-write" };
+    await db.run(sql.raw("CREATE TRIGGER synthetic_direct_failure BEFORE INSERT ON operation_receipts WHEN NEW.operation_id = 'atomic-write' BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END"));
+    await assert.rejects(createJournalForConversation(db, "alice", conversation.id, input), rejects("storage_unavailable"));
+    assert.equal((await readVoiceConversation(db, "alice", conversation.id)).last_entry_id, null);
+    assert.equal((await listJournal(db, "alice")).entries.length, 0);
+    assert.equal((await db.select().from(tables.checkinSessions)).length, 0);
+    await db.run(sql.raw("DROP TRIGGER synthetic_direct_failure"));
+    const entry = await createJournalForConversation(db, "alice", conversation.id, input);
+    assert.equal((await readVoiceConversation(db, "alice", conversation.id)).last_entry_id, entry.id);
+    assert.deepEqual(await createJournalForConversation(db, "alice", conversation.id, input), entry);
+  } finally { await close(); }
+});
+
+test("device conversations derive genuine Atech source and reject foreign or missing provisioning", async () => {
+  const { db, close } = await setup();
+  try {
+    await assert.rejects(createVoiceConversation(db, "alice", { source: "atech", operation_id: "no-device" }), rejects("device_access_denied"));
+    await db.insert(devices).values({ id: "demo", owner_id: "alice", token_hash: "synthetic-conversation-token", created_at: "2026-10-24T00:00:00Z", updated_at: "2026-10-24T00:00:00Z" });
+    await assert.rejects(createVoiceConversation(db, "bob", { source: "atech", device_id: "demo", operation_id: "foreign-device" }), rejects("device_access_denied"));
+    await assert.rejects(createVoiceConversation(db, "alice", { source: "app", device_id: "demo", operation_id: "spoofed-device" }), rejects("invalid_device_source"));
+    const conversation = await createVoiceConversation(db, "alice", { source: "atech", device_id: "demo", operation_id: "device-conversation" });
+    const entry = await createJournalForConversation(db, "alice", conversation.id, { title: "Device journal", content: [], properties: { "cup of tea": true }, operation_id: "device-direct-save" });
+    assert.equal(entry.source, "atech");
+    assert.equal(entry.device_id, "demo");
+    assert.equal(entry.voice_conversation_id, conversation.id);
+    assert.equal((await db.select().from(tables.checkinSessions)).length, 0);
   } finally { await close(); }
 });

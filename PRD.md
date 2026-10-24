@@ -4,128 +4,77 @@ provenance: "Unvetted Synthetic"
 
 # Pink Hack product requirements
 
-The developer's flexible-pages correction on 2026-10-24 supersedes the earlier fixed Today, About me, Patterns, page kinds, observation metrics, and separate day-plan model. [The coordinator brief](docs/flexible-pages-journal.md) is the current product direction. This PRD defines the build against that direction; it does not claim complete implementation.
+The developer's latest instruction is a simple voice-written journal. The agent writes directly to Journal; there is no stored proposal, required draft review, or separate check-in approval workflow. This supersedes the earlier staged draft/confirm/commit design. [The coordinator brief](docs/flexible-pages-journal.md) records the correction.
 
-## Problem and goal
+## Goal
 
-A person should be able to describe their needs in their own pages and have the assistant use that context when helping with a check-in or day plan. Fixed page types and questionnaires restrict what they can record. A person managing fatigue after cancer treatment is the [event's example audience](docs/event-context.md); their needs determine the content and journal properties.
+Build a Notion-style app with user-created context pages and one fixed Journal database. Each entry has flexible properties and an editable BlockNote page body. The assistant uses the person's pages to guide a conversation and writes new entries or changes existing content directly in response to their requests. A day plan is ordinary content inside the entry.
 
-Build a simple Notion-style app with user-created pages and one fixed Journal database. Each Journal row has flexible properties and an editable page body. The assistant uses all owned context pages, guides a conversation, and creates or changes journal content after explicit user confirmation. A day plan is ordinary content inside the journal entry's page body.
+The app supports people describing their own needs, including the [event's cancer-aftercare example](docs/event-context.md). Page names, questions, and journal properties are chosen from those needs rather than fixed product categories.
 
-Storage belongs to our backend. There is no Notion integration. Lovable is the frontend; the existing Better-T-Stack Hono/Node backend owns authentication, storage, and the shared API for the app and Atech.
+Lovable is the frontend. The existing Hono/Node backend provides authenticated page and Journal operations. Hosting is the existing [Vercel Pink Hack project](https://vercel.com/quasr/pink-hack); the existing Turso database is the sole deployed storage. Azure `gpt-live-1` remains the voice provider. There is no Notion product integration or new database deployment.
 
-The existing Turso database is the sole deployed storage. The backend loads `DATABASE_URL` and `DATABASE_API_KEY` from the root `.env` into private runtime configuration. Deployment provisions the app/device-relay service, without provisioning a database service or container.
+## App
 
-## Product decisions
+The sidebar lists custom pages, Add page, and Journal. Pages and entry bodies use the same standard BlockNote React/shadcn editor. Save native block JSON and reload it into that editor. Plain text for model context is derived from the saved blocks.
 
-| Decision | Status |
+Journal is a table with date/title/source metadata and flexible property columns. Opening a row opens its editable body. Day-plan headings, paragraphs, and checkboxes live there, without a separate plan table or acceptance screen.
+
+The voice agent handles writing. The user can also edit pages and journal entries directly. Normal unsaved editor text can remain locally while editing or recovering from a failed save; that is not a stored agent proposal workflow.
+
+## Direct voice flow
+
+1. The user starts the assistant. The backend resolves the authenticated person and owned voice session.
+2. The agent reads all live owned context pages and relevant journal history.
+3. It follows the conversation and the user's writing requests, creating an entry through Journal POST or updating one through Journal PATCH.
+4. The backend validates the owner, content, operation ID, and expected revision, then persists the write to Turso.
+5. The assistant reports the actual saved result. Later corrections are direct updates to that entry.
+
+The agent composes tool arguments in its conversation context. It does not create a held server-side proposal or require a draft/confirm/commit sequence. It asks a conversational clarification when intent or the target entry is ambiguous.
+
+Stopping voice prevents further actions. It does not silently undo entries already saved. Those remain ordinary editable Journal entries.
+
+## Shared API
+
+| Operation | Purpose |
 | --- | --- |
-| Custom context pages can be added, renamed, edited, and removed | Developer requirement |
-| Sidebar contains custom pages and one Journal database | Developer requirement; fixed product sections are superseded |
-| Journal properties are generic JSON values appropriate to the user's pages | Developer requirement; no compulsory metric scale |
-| Journal and context pages use BlockNote native block JSON | Agreed editor recommendation; frontend compatibility still needs integration checks |
-| Day plan lives in journal entry content | Developer requirement; no active separate plan resource |
-| Voice agent handles most journal creation and changes after confirmation | Developer requirement; app also supports direct editing |
-| App and Atech use the same authenticated backend | Developer requirement |
-| One deployed demo backend owns the device audio relay | Latest Atech instruction; fixed HTTPS/WSS connection, no laptop bridge or environment selector |
-| Existing Turso database owns deployed persistence | Latest coordinator instruction; reuse root `.env` database settings, no new database deployment |
-| Azure `gpt-live-1` is the configured voice provider | Real root-`.env` startup and graceful-close probe passed |
-| Canonical Lovable testing project | `ee916e8c-7f2f-4989-9c6e-cedcff1793b5`, Jonas' workspace |
+| Page list/read/create/update/archive | User-owned custom context pages |
+| Journal GET | Browse or retrieve saved entries |
+| Journal POST | Create an entry directly |
+| Journal PATCH | Update current content/properties directly |
+| Voice session and agent callback | Audio lifecycle, context, and direct journal tools |
 
-Personal needs and medical needs are examples of pages the user can create. They are not required page kinds. An energy value from 1 to 5 can be a user-chosen property; the prior fixed energy schema is not a product requirement.
-
-## Current owners and implementation
-
-| Owner | Current evidence | Required change |
-| --- | --- | --- |
-| Backend thread, Integrate GPT Live Into Lovable | Hono/Node, Better Auth, Drizzle SQLite/libSQL, twelve prior-contract tests, type checks, build, and local HTTP smoke checks reported passing | Generic pages and journal content/properties; confirmed create/update tools; explicit legacy migration; application reasoning callback |
-| Sole Lovable frontend worker | Assigned all remote edits in the canonical sandbox | BlockNote pages, simple sidebar, Journal table/page, auth and API wiring, reusable voice client |
-| PRD/API thread | Azure Live session started and closed cleanly with confirmed model `gpt-live-1` | Shared contracts, reconciliation, sanitized probe evidence |
-| Atech thread | Firmware/bridge guide exists; hardware/audio not verified | Align prompt to generic content and verify actual microphone/speaker transport |
-| Coordinator | Owns correction brief, target, remote-writer assignment, and status | Integration and demo reconciliation |
-
-[Backend documentation](docs/backend.md) records actual implemented routes. Prior foundation tests verify the earlier fixed schema, not this correction. [App contracts](docs/app-structure.md) define the agreed target. [The implementation plan](docs/implementation-plan.md) sequences the existing owners.
-
-## App experience
-
-The sidebar lists the user's pages, an Add page action, and Journal. The selected page has a title and the standard BlockNote editor. The app persists native block JSON and reloads that JSON into the same editor. It derives model-readable text from saved content; that text is not a second editable copy.
-
-Journal is a table of saved entries. Its system date/title/source remain metadata; parameter columns come from stored flexible properties. Opening a row opens its page body in the same editor. A Day plan heading, paragraphs, lists, or checkboxes can appear there when the user asks for a plan. The app does not require a separate plan-acceptance screen or multi-stage check-in form.
-
-Voice controls show connection, pending changes, successful saving, and errors. The person can review the proposed content visually or hear a concise summary, correct it, and confirm by voice. Direct page editing and text capture remain available.
-
-## Architecture
-
-```mermaid
-flowchart TD
-  App[Lovable: BlockNote pages and Journal] --> API[Existing Better-T-Stack backend]
-  Device[Atech microphone and speaker] --> API
-  API --> DB[Owned pages and journal content/properties]
-  API --> Live[Azure GPT-Live session setup]
-  App -. audio .-> Live
-  API -. in-service device audio relay .-> Live
-  Live --> Agent[Application reasoning and tool requests]
-  Agent --> API
-```
-
-The backend owns authenticated destinations, record validation, revision checks, confirmation receipts, and idempotent writes. Its single deployed service also owns the Atech audio relay and fixed authenticated WSS ingress. The assistant requests application tools and reports their verified result. Page content supplies context, not permissions.
-
-The existing Turso database is authoritative for deployed records, including authentication, pages, journal entries, check-ins, and device ownership. New context pages have no kind enum. Journal entries store BlockNote content and properties directly. Existing legacy context, observation, and day-plan data remains available for explicit migration/audit; it is not an additional active product model. Local SQLite test evidence does not establish Turso persistence; the backend owner must verify migrations, writes, and retrieval against the configured Turso database.
-
-## Conversation and save flow
-
-1. The user starts the assistant. The backend resolves the authenticated owner and check-in session.
-2. The assistant reads all live owned custom pages and their revisions, plus relevant recent journal history. It asks questions appropriate to those needs, one at a time, without forcing a fixed questionnaire.
-3. It prepares a journal draft with title, selected original user text, generic properties, and BlockNote content. A requested day plan is included as ordinary blocks.
-4. The person reviews or hears the draft, asks for corrections, then explicitly confirms the current proposal. The authenticated client records that confirmation separately from model tool execution.
-5. The voice agent commits with the backend's matching receipt. The backend creates or updates the bound entry once and returns the saved revision. The assistant announces success only then.
-6. Changing an existing day plan creates a new update proposal bound to that entry and revision. It preserves unrelated content. A saved check-in remains terminal.
-
-Example: a page asks to track sleep and nausea, and another describes what helps on a difficult day. The assistant uses those pages to create suitable properties and a readable entry with a manageable plan. Another user can track different needs without a database migration.
+[Detailed contracts](docs/app-structure.md) are shared by the voice agent, app, and device integration. The agent tools are `create_journal_entry` and `update_journal_entry`, using the same services as the app. Existing check-in records/routes can remain as legacy compatibility data; they are not required by the new flow.
 
 ## Requirements
 
-### Pages and journal
+- Context pages have arbitrary titles and native BlockNote content, without mandatory page kinds.
+- The assistant uses all live owned pages, tracking revisions and reporting context limits explicitly.
+- Journal properties accept bounded text, finite numbers, booleans, null, or lists of those values. Missing properties remain absent.
+- Day-plan edits preserve unrelated blocks and properties.
+- Every write derives the owner from authentication and validates its input.
+- Journal updates require the current expected revision. A stale write conflicts instead of replacing newer content.
+- A stable operation ID makes retrying a write return the original result. The same ID with changed content conflicts.
+- The agent announces successful saving only after a storage response confirms it.
+- Failed requests report failure honestly. Conversation working text and normal local editor text can support retry without a separate proposal resource.
+- Provider and Turso credentials remain server-side. Root `.env` supplies existing Turso `DATABASE_URL` and `DATABASE_API_KEY`, with token mapping verified by the backend owner.
+- Preserve legacy records during the transition. Do not delete old data merely because the active API is simpler.
+- The assistant organizes self-reports and planning; it does not diagnose, change treatment, or invent missing observations.
 
-- Users can create arbitrary titled pages, edit native blocks, and retrieve the same content after refresh.
-- All live owned context pages are available to the assistant. Category filters must not silently exclude pages. If context limits prevent complete inclusion, the workflow reports that and retrieves or summarizes content with revision provenance.
-- Journal properties accept bounded text, number, boolean, null, or lists of those values. Missing properties remain absent.
-- Journal content is native BlockNote JSON. Day-plan changes update the relevant blocks while preserving the rest of the entry.
-- Morning and evening entries can coexist. Local journal date is distinct from UTC timestamps.
-- Page and journal updates carry expected revisions and stable operation IDs. Omitted fields remain unchanged; stale edits preserve the saved version and return a conflict.
-- Legacy data is preserved and migrated explicitly. New writes use the generic product model, without silently converting old metric values.
+## Owners and current evidence
 
-### Voice and confirmation
+The [backend owner](t3-thread://v1/dac033a2-a1c4-48ee-a7cb-39cb86afe1a7) retains source, migration, runtime, and deployment work. The sole Lovable writer owns remote UI changes in canonical testing project `ee916e8c-7f2f-4989-9c6e-cedcff1793b5`. The coordinator owns the change brief and status; this thread owns PRD/contracts reconciliation.
 
-- App and Atech call the same authenticated services. Neither a requested owner ID nor instructions in a page can change the destination.
-- The agent can retrieve context, prepare new or update drafts, and commit a confirmed proposal. It cannot mint its own confirmation receipt.
-- Confirmation binds owner, check-in, draft revision, create/update action, target entry revision, and save operation. Revising the proposal invalidates the earlier receipt.
-- Duplicate commits return the original result. Reusing an operation ID with a changed payload conflicts.
-- Cancel, interruption, disconnect, or an unrelated utterance cannot confirm a pending write. Failed saves retain a reviewable proposal.
-- GPT-Live credentials stay on the backend. Client delegation needs a real application reasoning callback using current backend state and cancellation.
-- Atech acceptance requires actual microphone input and audible speaker output. Browser voice is a separate test stage. Follow [the firmware guide](docs/atech-firmware-guide.md) and confirm the hardware map before generation.
+Azure Live access passed a real startup and graceful-close probe. Earlier backend tests covered the staged/flexible foundation and do not prove direct-write integration. [Backend documentation](docs/backend.md) records actual endpoints and evidence as its owner updates them.
 
-### Access and feedback
+The backend is moving to the existing Vercel project with Turso preserved. Previous Azure VM origins are not current frontend/device targets. A verified Vercel API URL and device WSS capability remain for the backend owner to report. The Vercel dashboard URL is not the runtime API URL.
 
-- All record and device operations enforce authenticated ownership. Foreign-owned records are inaccessible.
-- The app distinguishes unsaved, saving, saved, and failed states. A provider connection does not imply that the journal agent or save succeeded.
-- Starting voice explains that custom pages are used as context. Existing explicit privacy choices must be reconciled with the all-page model rather than silently overridden.
-- Our app stores no raw audio by default. Use synthetic personal/medical data for integration and demo checks.
-- The assistant supports self-reports and planning. It does not diagnose, change treatment, or claim a clinical readiness score.
+## Acceptance
 
-## Acceptance and current gaps
+Verify adding unfamiliar context pages, saving/reloading native blocks, a page-informed voice conversation that directly creates a Journal entry with unfamiliar properties, and a direct Day-plan update preserving the rest of the page.
 
-| Outcome | Required evidence |
-| --- | --- |
-| Generic page editor | Create unfamiliar titled pages, save blocks, reload, and verify owner isolation |
-| Flexible Journal | Save unfamiliar properties and content; reopen the same row/page without a schema change |
-| Context-based voice flow | Assistant uses newly created pages, prepares appropriate content, receives explicit confirmation, and persists it |
-| Existing-entry change | Voice updates a Day plan inside the page, preserving unrelated content and rejecting a stale target revision |
-| Recovery | Cancel writes nothing; replay saves once; failed writes retain drafts; interruptions cannot confirm |
-| Atech | Real device speech follows the same path and the app retrieves the saved record |
+Verify foreign-user rejection, duplicate retry behavior, stale revision conflicts, failed-write feedback, and stop/interruption preventing subsequent actions. Real microphone/speaker and application-agent checks are distinct from access-only session startup.
 
-The Azure access-only probe passed. Backend-mediated WebRTC, real audio, application reasoning/tools, generic persistence, Lovable integration, and Atech still need their own evidence.
+Actual Atech audio remains a requested outcome. Follow [the device guide](docs/atech-firmware-guide.md) once its owner reconciles current direct-write and Vercel capabilities. Same-environment device relay support must be verified before promising WSS; a replacement hosting/bridge design is not inferred from a platform limitation.
 
-The backend currently runs locally at `http://localhost:3000`. Deployment of one app/device-relay service is authorized and underway with its owner, using the existing Turso database. The owner supplies one reachable origin, exact allowed frontend origin, fixed device messages and audio format, and authenticated demo-device binding. Turso runtime configuration and persistence verification remain that owner's work. Cleanup of only this project's obsolete non-Turso deployed database belongs to the coordinator's assigned cleanup worker, preserving the app service, Turso, and data. The canonical Lovable project is for testing; a submitted demo candidate has not been established.
-
-HealthKit imports, clinician access, clinical scoring, multi-database builders, and advanced editor collaboration need separate requirements. They are not acceptance criteria for this simple pages-and-Journal app.
+The existing Turso database is the only deployed storage. Cleanup of obsolete non-Turso resources remains with its assigned worker, preserving the app and Turso data. A complete deployed demo candidate has not been established by this document.

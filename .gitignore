@@ -40,3 +40,4 @@ DerivedData/
 
 # Logs
 *.log
+.env*

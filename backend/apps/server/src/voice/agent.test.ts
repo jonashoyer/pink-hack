@@ -13,7 +13,7 @@ import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { sql, is, SQL } from "drizzle-orm";
 import { Hono } from "hono";
 import { DomainError } from "../domain/errors";
-import { createPage, createCheckin, getCheckin, prepareDraft, confirmDraft, commitCheckin, getJournalEntry, listJournal } from "../domain/journal";
+import { createPage, createVoiceConversation, getJournalEntry, patchJournalEntry, listJournal } from "../domain/journal";
 import { runJournalAgent, journalAgentRequestSchema } from "./agent";
 import { createAssistantRoutes } from "../routes/assistant";
 
@@ -50,7 +50,7 @@ async function setup() {
   return { db, close: async () => { db.$client.close(); await rm(dir, { recursive: true, force: true }); } };
 }
 const config = { ANTHROPIC_API_KEY: "synthetic-test-key" };
-const draft: tables.JournalDraft = {
+const journal: tables.JournalDraft = {
   title: "Greenhouse notes", original_text: "I watered the seedlings and want help carrying compost.",
   properties: { "seedling trays": 7, "help wanted": ["compost", null], "watered": true },
   content: [{ id: "note", type: "paragraph", content: [{ type: "text", text: "I watered the seedlings.", styles: { bold: true } }] }, { id: "plan", type: "heading", props: { level: 2 }, content: "Day plan" }, { id: "task", type: "checkListItem", props: { checked: false }, content: "Ask for help carrying compost." }],
@@ -69,117 +69,135 @@ function mock(responses: unknown[], inspect?: (body: any, round: number) => void
     return Response.json(responses[round++]);
   };
 }
-async function input(db: Database) {
-  const checkin = await createCheckin(db, "alice", { source: "app", operation_id: "synthetic-capture" });
-  return { ownerId: "alice", checkinId: checkin.id, messages: [{ role: "user" as const, content: draft.original_text }] };
+async function input(db: Database, ownerId = "alice", operationId = "synthetic-capture") {
+  const conversation = await createVoiceConversation(db, ownerId, { source: "app", operation_id: operationId });
+  return { ownerId, voiceSessionId: conversation.id, delegationId: "delegation-1", messages: [{ role: "user" as const, content: `Save this journal note: ${journal.original_text}` }] };
 }
 const rejects = (code: string) => (e: unknown) => e instanceof DomainError && e.code === code;
+const create = () => use(tool("create-entry", "create_journal_entry", journal));
 
-test("all arbitrary owned pages reach context; native blocks and unfamiliar properties prepare without saving", async () => {
+test("all arbitrary owned pages reach context and direct creation persists native blocks and unfamiliar properties", async () => {
   const { db, close } = await setup();
   try {
-    await createPage(db, "alice", { title: "Greenhouse routines", content: draft.content, operation_id: "greenhouse" });
+    await createPage(db, "alice", { title: "Greenhouse routines", content: journal.content, operation_id: "greenhouse" });
     await createPage(db, "alice", { title: "Track seedling trays", content: [{ type: "paragraph", content: "Track seedling trays and help wanted." }], operation_id: "trays" });
     await createPage(db, "bob", { title: "Foreign private page", content: [], operation_id: "foreign" });
     const request = await input(db);
-    const fetcher = mock([use(tool("prepare", "prepare_journal_draft", { expected_revision: 0, draft })), answer("Your journal entry is saved.")], (body, round) => {
+    const fetcher = mock([create(), answer("The note is ready.")], (body, round) => {
       assert.ok(body.system.includes("Greenhouse routines"));
       assert.ok(body.system.includes("Track seedling trays"));
       assert.ok(body.system.includes("checkListItem"));
       assert.ok(!body.system.includes("Foreign private page"));
-      assert.ok(!body.tools.some((t: any) => /confirm/.test(t.name)));
-      if (round === 1) assert.ok(JSON.stringify(body.messages).includes('"seedling trays":7'));
+      assert.deepEqual(body.tools.map((t: any) => t.name).sort(), ["get_context", "get_page", "get_journal_entry", "create_journal_entry", "update_journal_entry"].sort());
+      if (round === 1) assert.equal(JSON.parse(body.messages.at(-1).content[0].content).properties["seedling trays"], 7);
     });
     const output = await runJournalAgent(db, config, request, undefined, fetcher);
-    assert.equal(output.stage, "draft");
-    assert.equal(output.draft_revision, 1);
-    assert.equal(output.saved_entry_id, null);
-    assert.match(output.text, /Would you like to save it\?/);
-    assert.deepEqual((await getCheckin(db, "alice", request.checkinId)).draft, draft);
-    assert.deepEqual((await listJournal(db, "alice", {})).entries, []);
-  } finally { await close(); }
-});
-
-test("a spoken yes and a model-invented receipt cannot save", async () => {
-  const { db, close } = await setup();
-  try {
-    const request = await input(db);
-    await prepareDraft(db, "alice", request.checkinId, { expected_revision: 0, draft });
-    request.messages[0]!.content = "Yes, save it.";
-    await assert.rejects(runJournalAgent(db, config, request, undefined, mock([use(tool("commit", "commit_journal_entry", { confirmation_receipt: "invented", operation_id: "invented-op" }))])), rejects("confirmation_required"));
-    assert.equal((await getCheckin(db, "alice", request.checkinId)).stage, "draft");
-    assert.equal((await listJournal(db, "alice", {})).entries.length, 0);
-  } finally { await close(); }
-});
-
-test("only an authenticated current receipt permits a persisted save and storage-derived response", async () => {
-  const { db, close } = await setup();
-  try {
-    const request = await input(db);
-    await prepareDraft(db, "alice", request.checkinId, { expected_revision: 0, draft });
-    const receipt = await confirmDraft(db, "alice", request.checkinId, { draft_revision: 1, action: "save", operation_id: "confirmed-save" });
-    const output = await runJournalAgent(db, config, request, undefined, mock([use(tool("commit", "commit_journal_entry", { confirmation_receipt: receipt.confirmation_receipt, operation_id: receipt.operation_id })), answer("A proposal is ready.")]));
-    const state = await getCheckin(db, "alice", request.checkinId);
-    assert.equal(output.stage, "saved");
-    assert.equal(output.saved_entry_id, state.saved_entry_id);
     assert.equal(output.text, "Your journal entry is saved.");
-    assert.equal((await listJournal(db, "alice", {})).entries[0]?.id, output.saved_entry_id);
+    assert.equal(output.entries.length, 1);
+    const stored = await getJournalEntry(db, "alice", output.entries[0]!.id);
+    assert.deepEqual(stored.content, journal.content);
+    assert.deepEqual(stored.properties, journal.properties);
+    assert.equal(output.entries[0]!.revision, stored.revision);
+    assert.equal((await listJournal(db, "alice", {})).entries.length, 1);
+    assert.ok(!("draft_revision" in output));
+    assert.ok(!("checkin_id" in output));
   } finally { await close(); }
 });
 
-test("draft mutation invalidates receipt before a subsequent model commit", async () => {
+test("ambiguous intent is clarified with an empty write list; text alone cannot claim save", async () => {
   const { db, close } = await setup();
   try {
     const request = await input(db);
-    await prepareDraft(db, "alice", request.checkinId, { expected_revision: 0, draft });
-    const receipt = await confirmDraft(db, "alice", request.checkinId, { draft_revision: 1, action: "save", operation_id: "old-save" });
-    await assert.rejects(runJournalAgent(db, config, request, undefined, mock([use(tool("revise", "prepare_journal_draft", { expected_revision: 1, draft }), tool("commit", "commit_journal_entry", { confirmation_receipt: receipt.confirmation_receipt, operation_id: receipt.operation_id }))])), rejects("confirmation_required"));
-    assert.equal((await getCheckin(db, "alice", request.checkinId)).draft_revision, 2);
+    request.messages[0]!.content = "Maybe change that thing about tomorrow.";
+    const output = await runJournalAgent(db, config, request, undefined, mock([answer("Which journal entry and what would you like to change?")]));
+    assert.equal(output.text, "Which journal entry and what would you like to change?");
+    assert.deepEqual(output.entries, []);
     assert.equal((await listJournal(db, "alice", {})).entries.length, 0);
+    const proposed = await runJournalAgent(db, config, request, undefined, mock([answer("Your journal entry is saved.")]));
+    assert.match(proposed.text, /haven't saved any changes/);
+    assert.deepEqual(proposed.entries, []);
   } finally { await close(); }
 });
 
-test("journal update reads the owned entry and keeps its saved content until confirmed", async () => {
+test("response revisions are re-read from storage after tool execution", async () => {
   const { db, close } = await setup();
   try {
-    const original = await input(db);
-    await prepareDraft(db, "alice", original.checkinId, { expected_revision: 0, draft });
-    const receipt = await confirmDraft(db, "alice", original.checkinId, { draft_revision: 1, action: "save", operation_id: "initial-save" });
-    const entry = await commitCheckin(db, "alice", original.checkinId, { confirmation_receipt: receipt.confirmation_receipt, operation_id: receipt.operation_id });
-    const next = await createCheckin(db, "alice", { source: "app", operation_id: "update-capture" });
-    const updated = { ...draft, content: [...draft.content.slice(0, 2), { ...draft.content[2], content: "Ask for help tomorrow instead." }] };
-    const request = { ownerId: "alice", checkinId: next.id, messages: [{ role: "user" as const, content: "Move the compost help to tomorrow." }] };
-    const output = await runJournalAgent(db, config, request, undefined, mock([
-      use(tool("read-entry", "get_journal_entry", { entry_id: entry.id })),
-      use(tool("prepare-update", "prepare_journal_update", { entry_id: entry.id, expected_entry_revision: entry.revision, expected_revision: 0, draft: updated })),
-      answer("The plan is saved."),
-    ]));
-    assert.equal(output.stage, "draft");
-    assert.equal(output.saved_entry_id, null);
-    assert.match(output.text, /Would you like to save it\?/);
-    assert.deepEqual((await getJournalEntry(db, "alice", entry.id)).content, draft.content);
-    const confirmation = await confirmDraft(db, "alice", next.id, { draft_revision: 1, action: "save", operation_id: "update-save" });
-    const saved = await runJournalAgent(db, config, request, undefined, mock([
-      use(tool("commit-update", "commit_journal_entry", { confirmation_receipt: confirmation.confirmation_receipt, operation_id: confirmation.operation_id })), answer(),
-    ]));
-    assert.equal(saved.saved_entry_id, entry.id);
-    const stored = await getJournalEntry(db, "alice", entry.id);
-    assert.deepEqual(stored.properties, draft.properties);
-    assert.deepEqual(stored.content, updated.content);
-    assert.equal(stored.original_text, draft.original_text);
+    const request = await input(db);
+    const provider = mock([create(), answer()]);
+    let round = 0;
+    const fetcher: typeof fetch = async (url, init) => {
+      if (round++ === 1) {
+        const entry = (await listJournal(db, "alice", {})).entries[0]!;
+        await patchJournalEntry(db, "alice", entry.id, { expected_revision: entry.revision, operation_id: "concurrent-edit", title: "Updated by authenticated editor" });
+      }
+      return provider(url, init);
+    };
+    const output = await runJournalAgent(db, config, request, undefined, fetcher);
+    const entry = await getJournalEntry(db, "alice", output.entries[0]!.id);
+    assert.equal(entry.title, "Updated by authenticated editor");
+    assert.deepEqual(output.entries, [{ id: entry.id, revision: entry.revision }]);
+    assert.equal(entry.revision, 1);
   } finally { await close(); }
 });
 
-test("repeated tool IDs execute once and provider thinking is preserved", async () => {
+test("direct update reads an owned entry and preserves unrelated blocks/properties", async () => {
+  const { db, close } = await setup();
+  try {
+    const request = await input(db);
+    const original = await runJournalAgent(db, config, request, undefined, mock([create(), answer()]));
+    const entry = await getJournalEntry(db, "alice", original.entries[0]!.id);
+    const content = [...journal.content.slice(0, 2), { ...journal.content[2], content: "Ask for help tomorrow instead." }];
+    request.messages[0]!.content = "Move the compost help to tomorrow in the entry we just saved.";
+    const output = await runJournalAgent(db, config, { ...request, delegationId: "delegation-update", entryId: entry.id }, undefined, mock([
+      use(tool("read-entry", "get_journal_entry", { entry_id: entry.id })),
+      use(tool("update-entry", "update_journal_entry", { entry_id: entry.id, expected_revision: entry.revision, content })), answer("I have a suggested change."),
+    ], (body) => assert.ok(body.system.includes('"target_entry"'))));
+    assert.deepEqual(output.entries, [{ id: entry.id, revision: entry.revision + 1 }]);
+    const stored = await getJournalEntry(db, "alice", entry.id);
+    assert.deepEqual(stored.properties, journal.properties);
+    assert.deepEqual(stored.content, content);
+    assert.equal(stored.original_text, journal.original_text);
+    const readOnly = await runJournalAgent(db, config, request, undefined, mock([answer("What else matters today?")]));
+    assert.deepEqual(readOnly.entries, []);
+  } finally { await close(); }
+});
+
+test("stale entry revisions reject the update and preserve writing", async () => {
+  const { db, close } = await setup();
+  try {
+    const request = await input(db);
+    const output = await runJournalAgent(db, config, request, undefined, mock([create(), answer()]));
+    const entry = await getJournalEntry(db, "alice", output.entries[0]!.id);
+    await assert.rejects(runJournalAgent(db, config, request, undefined, mock([use(tool("stale", "update_journal_entry", { entry_id: entry.id, expected_revision: entry.revision + 1, title: "Wrong revision" }))])), rejects("revision_conflict"));
+    assert.equal((await getJournalEntry(db, "alice", entry.id)).title, journal.title);
+  } finally { await close(); }
+});
+
+test("repeated tool IDs execute once within a turn and thinking blocks are preserved", async () => {
   const { db, close } = await setup();
   try {
     const request = await input(db);
     const thinking = { type: "thinking", thinking: "Synthetic reasoning", signature: "synthetic-signature" };
-    const call = tool("same-id", "prepare_journal_draft", { expected_revision: 0, draft });
+    const call = tool("same-id", "create_journal_entry", journal);
     const output = await runJournalAgent(db, config, request, undefined, mock([use(thinking, call), use(call), answer()], (body, round) => {
       if (round === 1) assert.deepEqual(body.messages[1].content[0], thinking);
     }));
-    assert.equal(output.draft_revision, 1);
+    assert.equal(output.entries.length, 1);
+    assert.equal((await listJournal(db, "alice", {})).entries.length, 1);
+  } finally { await close(); }
+});
+
+test("stable delegation/tool IDs replay creation across requests without duplicates", async () => {
+  const { db, close } = await setup();
+  try {
+    const request = await input(db);
+    const first = await runJournalAgent(db, config, request, undefined, mock([create(), answer()]));
+    const second = await runJournalAgent(db, config, request, undefined, mock([create(), answer()]));
+    assert.deepEqual(second.entries, first.entries);
+    assert.equal((await listJournal(db, "alice", {})).entries.length, 1);
+    const third = await runJournalAgent(db, config, { ...request, delegationId: "different-delegation" }, undefined, mock([create(), answer()]));
+    assert.notEqual(third.entries[0]!.id, first.entries[0]!.id);
+    assert.equal((await listJournal(db, "alice", {})).entries.length, 2);
   } finally { await close(); }
 });
 
@@ -187,23 +205,22 @@ test("conflicting tool IDs reject without a second write", async () => {
   const { db, close } = await setup();
   try {
     const request = await input(db);
-    await assert.rejects(runJournalAgent(db, config, request, undefined, mock([use(tool("same", "prepare_journal_draft", { expected_revision: 0, draft })), use(tool("same", "cancel_checkin"))])), rejects("tool_call_conflict"));
-    assert.equal((await getCheckin(db, "alice", request.checkinId)).stage, "draft");
+    await assert.rejects(runJournalAgent(db, config, request, undefined, mock([create(), use(tool("create-entry", "create_journal_entry", { ...journal, title: "Changed payload" }))])), rejects("tool_call_conflict"));
+    assert.equal((await listJournal(db, "alice", {})).entries.length, 1);
   } finally { await close(); }
 });
 
-test("abort before context or after provider response starts no draft writes", async () => {
+test("abort before context or after provider response starts no journal writes", async () => {
   const { db, close } = await setup();
   try {
     const request = await input(db);
     const controller = new AbortController();
     controller.abort();
     await assert.rejects(runJournalAgent(db, config, request, controller.signal, mock([])), rejects("assistant_aborted"));
-    assert.equal((await getCheckin(db, "alice", request.checkinId)).voice_context_revisions, null);
     const during = new AbortController();
-    const fetcher: typeof fetch = async () => { during.abort(); return Response.json(use(tool("prepare", "prepare_journal_draft", { expected_revision: 0, draft }))); };
+    const fetcher: typeof fetch = async () => { during.abort(); return Response.json(create()); };
     await assert.rejects(runJournalAgent(db, config, request, during.signal, fetcher), rejects("assistant_aborted"));
-    assert.equal((await getCheckin(db, "alice", request.checkinId)).draft_revision, 0);
+    assert.equal((await listJournal(db, "alice", {})).entries.length, 0);
   } finally { await close(); }
 });
 
@@ -214,24 +231,21 @@ test("provider failures and malformed/oversized responses are sanitized", async 
     const fetchers: Array<typeof fetch> = [
       async () => { throw new Error("private synthetic patient payload and secret"); },
       async () => new Response("private synthetic patient payload", { status: 500 }),
-      async () => new Response("not-json"),
-      async () => new Response("x".repeat(131_073)),
+      async () => new Response("not-json"), async () => new Response("x".repeat(131_073)),
       mock([{ content: [{ type: "unknown", text: "private synthetic patient payload" }], stop_reason: "end_turn" }]),
     ];
-    for (const fetcher of fetchers) {
-      await assert.rejects(runJournalAgent(db, config, request, undefined, fetcher), (e: unknown) => e instanceof DomainError && e.code === "assistant_unavailable" && !/patient|secret|payload/.test(e.message));
-    }
-    assert.equal((await getCheckin(db, "alice", request.checkinId)).draft_revision, 0);
+    for (const fetcher of fetchers) await assert.rejects(runJournalAgent(db, config, request, undefined, fetcher), (e: unknown) => e instanceof DomainError && e.code === "assistant_unavailable" && !/patient|secret|payload/.test(e.message));
+    assert.equal((await listJournal(db, "alice", {})).entries.length, 0);
   } finally { await close(); }
 });
 
-test("dispatcher rejects unknown or invalid tool inputs", async () => {
+test("dispatcher rejects invalid inputs and legacy staged tools", async () => {
   const { db, close } = await setup();
   try {
     const request = await input(db);
-    await assert.rejects(runJournalAgent(db, config, request, undefined, mock([use(tool("bad", "prepare_journal_draft", { expected_revision: 0, draft: { patient: "invalid" } }))])), rejects("invalid_input"));
-    await assert.rejects(runJournalAgent(db, config, request, undefined, mock([use(tool("confirm", "confirm_draft"))])), rejects("unknown_tool"));
-    assert.equal((await getCheckin(db, "alice", request.checkinId)).draft_revision, 0);
+    await assert.rejects(runJournalAgent(db, config, request, undefined, mock([use(tool("bad", "create_journal_entry", { patient: "invalid" }))])), rejects("invalid_input"));
+    for (const name of ["prepare_journal_draft", "confirm_draft", "commit_journal_entry", "cancel_checkin"]) await assert.rejects(runJournalAgent(db, config, request, undefined, mock([use(tool(name, name))])), rejects("unknown_tool"));
+    assert.equal((await listJournal(db, "alice", {})).entries.length, 0);
   } finally { await close(); }
 });
 
@@ -243,26 +257,37 @@ test("lossy transcripts merge adjacent roles and enforce message/character limit
     await runJournalAgent(db, config, request, undefined, mock([answer()], (body) => assert.deepEqual(body.messages, [{ role: "user", content: "First fragment\nSecond fragment" }])));
     await runJournalAgent(db, config, { ...request, messages: [{ role: "assistant", content: "What next?" }] }, undefined, mock([answer()], (body) => {
       assert.deepEqual(body.messages.map((m: any) => m.role), ["user", "assistant", "user"]);
-      assert.match(body.messages.at(-1).content, /not confirmation/);
+      assert.match(body.messages.at(-1).content, /not a request to write/);
     }));
-    assert.equal(journalAgentRequestSchema.safeParse({ messages: Array.from({ length: 25 }, () => ({ role: "user", content: "x" })) }).success, false);
-    assert.equal(journalAgentRequestSchema.safeParse({ messages: [{ role: "user", content: "x".repeat(24_001) }] }).success, false);
+    assert.equal(journalAgentRequestSchema.safeParse({ delegation_id: "d", messages: Array.from({ length: 25 }, () => ({ role: "user", content: "x" })) }).success, false);
+    assert.equal(journalAgentRequestSchema.safeParse({ delegation_id: "d", messages: [{ role: "user", content: "x".repeat(24_001) }] }).success, false);
   } finally { await close(); }
 });
 
-test("tool rounds are bounded and cancellation is storage-derived", async () => {
+test("tool rounds are bounded without writes", async () => {
   const { db, close } = await setup();
   try {
     const request = await input(db);
-    await assert.rejects(runJournalAgent(db, config, request, undefined, mock(Array.from({ length: 4 }, (_, i) => use(tool(`read-${i}`, "get_checkin"))))), rejects("assistant_unavailable"));
-    const output = await runJournalAgent(db, config, request, undefined, mock([use(tool("cancel", "cancel_checkin")), answer("Saved!")]));
-    assert.equal(output.stage, "canceled");
-    assert.equal(output.text, "The check-in is canceled.");
-    assert.equal(output.saved_entry_id, null);
+    await assert.rejects(runJournalAgent(db, config, request, undefined, mock(Array.from({ length: 4 }, (_, i) => use(tool(`read-${i}`, "get_context"))))), rejects("assistant_unavailable"));
+    assert.equal((await listJournal(db, "alice", {})).entries.length, 0);
   } finally { await close(); }
 });
 
-test("assistant route requires authentication, ownership and valid request JSON", async (t) => {
+test("foreign voice sessions, optional targets and entry updates reject before writing", async () => {
+  const { db, close } = await setup();
+  try {
+    const alice = await input(db);
+    await assert.rejects(runJournalAgent(db, config, { ...alice, ownerId: "bob" }, undefined, mock([])), rejects("not_found"));
+    const bob = await input(db, "bob", "bob-capture");
+    const foreign = await runJournalAgent(db, config, bob, undefined, mock([create(), answer()]));
+    const target = foreign.entries[0]!;
+    await assert.rejects(runJournalAgent(db, config, { ...alice, entryId: target.id }, undefined, mock([])), rejects("not_found"));
+    await assert.rejects(runJournalAgent(db, config, alice, undefined, mock([use(tool("foreign-update", "update_journal_entry", { entry_id: target.id, expected_revision: target.revision, title: "Intrusion" }))])), rejects("not_found"));
+    assert.equal((await listJournal(db, "alice", {})).entries.length, 0);
+  } finally { await close(); }
+});
+
+test("assistant HTTP contract authenticates and returns only this delegation's persisted entries", async (t) => {
   const { db, close } = await setup();
   try {
     const request = await input(db);
@@ -273,15 +298,21 @@ test("assistant route requires authentication, ownership and valid request JSON"
       app.onError((e, c) => c.json({ code: e instanceof DomainError ? e.code : "unexpected" }, e instanceof DomainError ? e.status as 400 : 500));
       return app;
     };
-    const url = `/api/v1/checkins/${request.checkinId}/agent`;
-    const init = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: request.messages }) };
+    const url = `/api/v1/voice/sessions/${request.voiceSessionId}/agent`;
+    const payload = { delegation_id: request.delegationId, messages: request.messages };
+    const init = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) };
     assert.equal((await make().request(url, init)).status, 401);
     assert.equal((await make("bob").request(url, init)).status, 404);
     assert.equal((await make("alice").request(url, { ...init, body: "invalid-json" })).status, 422);
-    assert.equal((await make("alice").request(url, { ...init, body: JSON.stringify({ messages: request.messages, ownerId: "bob" }) })).status, 422);
-    t.mock.method(globalThis, "fetch", mock([answer("What would you like to add about the seedlings?")]));
+    assert.equal((await make("alice").request(url, { ...init, body: JSON.stringify({ ...payload, ownerId: "bob" }) })).status, 422);
+    assert.equal((await make("alice").request(url, { ...init, body: JSON.stringify({ messages: request.messages }) })).status, 422);
+    t.mock.method(globalThis, "fetch", mock([create(), answer(), answer("What else matters today?")]));
     const response = await make("alice").request(url, init);
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { text: "What would you like to add about the seedlings?", checkin_id: request.checkinId, draft_revision: 0, stage: "created", saved_entry_id: null });
+    const written = (await listJournal(db, "alice", {})).entries[0]!;
+    assert.deepEqual(await response.json(), { text: "Your journal entry is saved.", entries: [{ id: written.id, revision: written.revision }] });
+    const readOnly = await make("alice").request(url, { ...init, body: JSON.stringify({ ...payload, delegation_id: "read-only" }) });
+    assert.deepEqual(await readOnly.json(), { text: "What else matters today?", entries: [] });
+    assert.equal((await make("alice").request(`/api/v1/checkins/${request.voiceSessionId}/agent`, init)).status, 404);
   } finally { await close(); }
 });

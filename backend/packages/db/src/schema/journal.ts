@@ -13,7 +13,7 @@ export type PropertyValue = string | number | boolean | null | (string | number 
 export type JournalProperties = Record<string, PropertyValue>;
 export type JournalDraft = { title: string; original_text: string; content: BlockContent; properties: JournalProperties };
 export type Confirmation = { receipt: string; operation_id: string; draft_revision: number; plan_state?: "draft" | "accepted"; replace_plan_id?: string };
-export type JournalEntryResult = JournalDraft & { id: string; owner_id: string; journal_date: string; source: "app" | "atech"; session_id: string; operation_id: string; context_revisions: Record<string, number>; revision: number; created_at: string; updated_at: string };
+export type JournalEntryResult = JournalDraft & { id: string; owner_id: string; journal_date: string; source: "app" | "atech"; session_id: string | null; capture_id?: string; voice_conversation_id?: string | null; device_id?: string | null; operation_id: string; context_revisions: Record<string, number>; revision: number; created_at: string; updated_at: string };
 const owner = () => text("owner_id").notNull().references(() => user.id, { onDelete: "cascade" });
 
 export const profiles = sqliteTable("profiles", {
@@ -72,3 +72,25 @@ export const operationReceipts = sqliteTable("operation_receipts", {
   request_hash: text("request_hash").notNull(), result: text("result", { mode: "json" }).$type<Record<string, unknown>>().notNull(),
   created_at: text("created_at").notNull(),
 }, (t) => [uniqueIndex("receipt_owner_operation").on(t.owner_id, t.operation_id)]);
+
+// Direct journal storage has no foreign-key dependency on compatibility check-ins.
+export const voiceConversations = sqliteTable("voice_conversations", {
+  id: text("id").primaryKey(), owner_id: owner(), device_id: text("device_id"),
+  source: text("source", { enum: ["app", "atech"] }).notNull(),
+  target_entry_id: text("target_entry_id"), last_entry_id: text("last_entry_id"),
+  state: text("state", { enum: ["active", "stopped"] }).notNull().default("active"),
+  created_at: text("created_at").notNull(), updated_at: text("updated_at").notNull(),
+}, (t) => [index("conversation_owner").on(t.owner_id, t.id)]);
+export const journalDocuments = sqliteTable("journal_documents", {
+  id: text("id").primaryKey(), owner_id: owner(), journal_date: text("journal_date").notNull(),
+  title: text("title").notNull(), original_text: text("original_text").notNull(),
+  content: text("content", { mode: "json" }).$type<BlockContent>().notNull(),
+  properties: text("properties", { mode: "json" }).$type<JournalProperties>().notNull(),
+  source: text("source", { enum: ["app", "atech"] }).notNull(), device_id: text("device_id"),
+  capture_id: text("capture_id").notNull(), voice_conversation_id: text("voice_conversation_id"),
+  session_id: text("session_id"), legacy_entry_id: text("legacy_entry_id"),
+  operation_id: text("operation_id").notNull(),
+  context_revisions: text("context_revisions", { mode: "json" }).$type<Record<string, number>>().notNull(),
+  revision: integer("revision").notNull().default(1),
+  created_at: text("created_at").notNull(), updated_at: text("updated_at").notNull(),
+}, (t) => [uniqueIndex("document_owner_operation").on(t.owner_id, t.operation_id), index("document_owner_date").on(t.owner_id, t.journal_date, t.id)]);

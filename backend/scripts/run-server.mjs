@@ -6,10 +6,10 @@ import { spawn } from "node:child_process";
 // Reuse repository-local provider settings over stale inherited host values,
 // as in claude-impact-lab. Never log or copy credentials into source files.
 const env = { ...process.env };
-for (const location of [new URL("../../.env", import.meta.url), new URL("../apps/server/.env", import.meta.url)]) {
+for (const location of [new URL("../apps/server/.env", import.meta.url), new URL("../../.env", import.meta.url)]) {
   try {
     const local = parseEnv(await readFile(location, "utf8"));
-    for (const key of ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_REALTIME_DEPLOYMENT"]) {
+    for (const key of ["DATABASE_URL", "DATABASE_API_KEY", "DATABASE_AUTH_TOKEN", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_REALTIME_DEPLOYMENT"]) {
       if (local[key]?.trim()) env[key] = local[key];
     }
   } catch (error) {

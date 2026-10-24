@@ -2,15 +2,15 @@ import { randomUUID } from "node:crypto";
 import { and, eq, desc, gte, lte, lt, or, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { Database } from "@backend/db";
-import { profiles, pages, checkinSessions, journalEntries, operationReceipts, observations, dayPlans } from "@backend/db/schema/journal";
+import { profiles, pages, checkinSessions, journalEntries, operationReceipts, journalDocuments, voiceConversations } from "@backend/db/schema/journal";
 import { devices } from "@backend/db/schema/device";
 import type { JournalDraft, JournalEntryResult } from "@backend/db/schema/journal";
 import { DomainError } from "./errors";
-import { validate, createCheckinSchema, deviceCheckinSchema, prepareDraftSchema, updateDraftSchema, confirmSchema, commitSchema, profilePatchSchema, pageCreateSchema, pagePatchSchema, pageArchiveSchema, pageQuerySchema, journalPatchSchema, journalQuerySchema, dateSchema, recordIdSchema } from "./contracts";
-import type { CreateCheckinInput, DraftInput, JournalUpdateInput, JournalPatchInput, ConfirmInput, CommitInput } from "./contracts";
+import { validate, createCheckinSchema, deviceCheckinSchema, prepareDraftSchema, updateDraftSchema, confirmSchema, commitSchema, profilePatchSchema, pageCreateSchema, pagePatchSchema, pageArchiveSchema, pageQuerySchema, journalPatchSchema, journalCreateSchema, voiceConversationCreateSchema, journalQuerySchema, dateSchema, recordIdSchema } from "./contracts";
+import type { CreateCheckinInput, DraftInput, JournalUpdateInput, JournalPatchInput, ConfirmInput, CommitInput, JournalCreateInput, VoiceConversationCreateInput } from "./contracts";
 import { write, missing, conflict, now, fingerprint } from "./store";
 import type { Store } from "./store";
-import { convertLegacyJournal, normalizeLegacyDraft } from "./legacy";
+import { normalizeLegacyDraft, copyLegacyJournalEntry, canonicalJournalResult } from "./legacy";
 
 export * from "./contracts";
 export * from "./legacy";
@@ -69,7 +69,8 @@ async function assertAvailableOperation(tx: Store, ownerId: string, operationId:
   const [entry] = await tx.select({ id: journalEntries.id }).from(journalEntries).where(and(eq(journalEntries.owner_id, ownerId), eq(journalEntries.operation_id, operationId)));
   const [page] = await tx.select({ id: pages.id }).from(pages).where(and(eq(pages.owner_id, ownerId), eq(pages.operation_id, operationId)));
   const [capture] = await tx.select({ id: checkinSessions.id }).from(checkinSessions).where(and(eq(checkinSessions.owner_id, ownerId), eq(checkinSessions.operation_id, operationId)));
-  if (receipt || entry || page || capture || (confirmed && confirmed.id !== permittedCheckinId)) throw new DomainError(409, "operation_conflict", "Operation ID is already used. Use a new operation ID for a new action.");
+  const [document] = await tx.select({ id: journalDocuments.id }).from(journalDocuments).where(and(eq(journalDocuments.owner_id, ownerId), eq(journalDocuments.operation_id, operationId)));
+  if (receipt || document || entry || page || capture || (confirmed && confirmed.id !== permittedCheckinId)) throw new DomainError(409, "operation_conflict", "Operation ID is already used. Use a new operation ID for a new action.");
 }
 async function recordOperation<T extends object>(tx: Store, ownerId: string, operationId: string, request: unknown, result: T): Promise<T> {
   await tx.insert(operationReceipts).values({ id: id(), owner_id: ownerId, operation_id: operationId, request_hash: fingerprint(request), result: result as Record<string, unknown>, created_at: now() });
@@ -222,22 +223,20 @@ export async function confirmDraft(db: Database, ownerId: string, checkinId: str
     return publicConfirmation(confirmation);
   });
 }
-async function entryResult(tx: Store, row: typeof journalEntries.$inferSelect): Promise<JournalEntryResult> {
-  let converted: ReturnType<typeof convertLegacyJournal> | undefined;
-  if (row.content === null || row.properties === null) {
-    const reported = await tx.select().from(observations).where(and(eq(observations.entry_id, row.id), eq(observations.owner_id, row.owner_id)));
-    const plans = await tx.select().from(dayPlans).where(and(eq(dayPlans.entry_id, row.id), eq(dayPlans.owner_id, row.owner_id)));
-    converted = convertLegacyJournal(row.note, reported, plans, row.id);
-  }
-  return { id: row.id, owner_id: row.owner_id, title: row.title, original_text: row.original_text, content: row.content ?? converted!.content, properties: row.properties ?? converted!.properties, journal_date: row.journal_date, source: row.source, session_id: row.session_id, operation_id: row.operation_id, context_revisions: row.context_revisions, revision: row.revision, created_at: row.created_at, updated_at: row.updated_at };
-}
-async function readEntry(tx: Store, ownerId: string, entryId: string) {
+async function readEntry(tx: Store, ownerId: string, entryId: string): Promise<JournalEntryResult> {
   validate(recordIdSchema, entryId);
-  const [entry] = await tx.select().from(journalEntries).where(and(eq(journalEntries.id, entryId), eq(journalEntries.owner_id, ownerId)));
-  if (!entry) throw missing();
-  return entryResult(tx, entry);
+  const [document] = await tx.select().from(journalDocuments).where(and(eq(journalDocuments.id, entryId), eq(journalDocuments.owner_id, ownerId)));
+  if (document) return canonicalJournalResult(document);
+  const [legacy] = await tx.select().from(journalEntries).where(and(eq(journalEntries.id, entryId), eq(journalEntries.owner_id, ownerId)));
+  if (!legacy) throw missing();
+  return copyLegacyJournalEntry(tx, legacy);
 }
-export async function getJournalEntry(db: Database, ownerId: string, entryId: string) { return readEntry(db, ownerId, entryId); }
+async function copyOwnedLegacyDocuments(tx: Store, ownerId: string) {
+  const missingRows = await tx.select({ entry: journalEntries }).from(journalEntries).leftJoin(journalDocuments, eq(journalEntries.id, journalDocuments.id)).where(and(eq(journalEntries.owner_id, ownerId), isNull(journalDocuments.id))).limit(1001);
+  if (missingRows.length > 1000) throw new DomainError(409, "legacy_conversion_required", "Run the explicit legacy migration before browsing this journal. No entries were silently omitted.");
+  for (const row of missingRows) await copyLegacyJournalEntry(tx, row.entry);
+}
+export async function getJournalEntry(db: Database, ownerId: string, entryId: string) { return write(db, (tx) => readEntry(tx, ownerId, entryId)); }
 export async function patchJournalEntry(db: Database, ownerId: string, entryId: string, input: JournalPatchInput) {
   validate(recordIdSchema, entryId);
   const data = validate(journalPatchSchema, input);
@@ -248,9 +247,9 @@ export async function patchJournalEntry(db: Database, ownerId: string, entryId: 
     await assertAvailableOperation(tx, ownerId, data.operation_id);
     const entry = await readEntry(tx, ownerId, entryId);
     if (entry.revision !== data.expected_revision) throw conflict();
-    const [updated] = await tx.update(journalEntries).set({ title: data.title ?? entry.title, content: data.content ?? entry.content, properties: data.properties ?? entry.properties, revision: entry.revision + 1, updated_at: now() }).where(and(eq(journalEntries.id, entryId), eq(journalEntries.owner_id, ownerId), eq(journalEntries.revision, data.expected_revision))).returning();
+    const [updated] = await tx.update(journalDocuments).set({ title: data.title ?? entry.title, content: data.content ?? entry.content, properties: data.properties ?? entry.properties, revision: entry.revision + 1, updated_at: now() }).where(and(eq(journalDocuments.id, entryId), eq(journalDocuments.owner_id, ownerId), eq(journalDocuments.revision, data.expected_revision))).returning();
     if (!updated) throw conflict();
-    return recordOperation(tx, ownerId, data.operation_id, request, await entryResult(tx, updated));
+    return recordOperation(tx, ownerId, data.operation_id, request, canonicalJournalResult(updated));
   });
 }
 export async function commitCheckin(db: Database, ownerId: string, checkinId: string, input: CommitInput) {
@@ -274,7 +273,7 @@ export async function commitCheckin(db: Database, ownerId: string, checkinId: st
       const target = await readEntry(tx, ownerId, checkin.target_entry_id);
       if (target.revision !== checkin.target_entry_revision) throw conflict();
       if (target.original_text !== draft.original_text) throw new DomainError(409, "original_text_immutable", "Saved original_text must remain unchanged.");
-      const [updated] = await tx.update(journalEntries).set({ title: draft.title, content: draft.content, properties: draft.properties, revision: target.revision + 1, context_revisions: checkin.context_revisions, updated_at: timestamp }).where(and(eq(journalEntries.id, target.id), eq(journalEntries.owner_id, ownerId), eq(journalEntries.revision, checkin.target_entry_revision!))).returning();
+      const [updated] = await tx.update(journalDocuments).set({ title: draft.title, content: draft.content, properties: draft.properties, revision: target.revision + 1, context_revisions: checkin.context_revisions, updated_at: timestamp }).where(and(eq(journalDocuments.id, target.id), eq(journalDocuments.owner_id, ownerId), eq(journalDocuments.revision, checkin.target_entry_revision!))).returning();
       if (!updated) throw conflict();
       entryId = target.id;
     } else {
@@ -297,17 +296,24 @@ export async function cancelCheckin(db: Database, ownerId: string, checkinId: st
 const journalCursorSchema = z.object({ journal_date: dateSchema, id: recordIdSchema }).strict();
 export async function listJournal(db: Database, ownerId: string, input: z.input<typeof journalQuerySchema> = {}) {
   const data = validate(journalQuerySchema, input);
-  const filters = [eq(journalEntries.owner_id, ownerId)];
-  if (data.from) filters.push(gte(journalEntries.journal_date, data.from));
-  if (data.to) filters.push(lte(journalEntries.journal_date, data.to));
-  if (data.cursor) {
-    const cursor = decodeCursor(journalCursorSchema, data.cursor);
-    filters.push(or(lt(journalEntries.journal_date, cursor.journal_date), and(eq(journalEntries.journal_date, cursor.journal_date), lt(journalEntries.id, cursor.id)))!);
-  }
-  const rows = await db.select().from(journalEntries).where(and(...filters)).orderBy(desc(journalEntries.journal_date), desc(journalEntries.id)).limit(data.limit + 1);
-  const entries: JournalEntryResult[] = [];
-  for (const row of rows.slice(0, data.limit)) entries.push(await entryResult(db, row));
-  return { entries, next_cursor: rows.length > data.limit ? encodeCursor({ journal_date: entries.at(-1)!.journal_date, id: entries.at(-1)!.id }) : null };
+  return write(db, async (tx) => {
+    await copyOwnedLegacyDocuments(tx, ownerId);
+    const filters = [eq(journalDocuments.owner_id, ownerId)];
+    if (data.from) filters.push(gte(journalDocuments.journal_date, data.from));
+    if (data.to) filters.push(lte(journalDocuments.journal_date, data.to));
+    if (data.cursor) {
+      const cursor = decodeCursor(journalCursorSchema, data.cursor);
+      filters.push(or(lt(journalDocuments.journal_date, cursor.journal_date), and(eq(journalDocuments.journal_date, cursor.journal_date), lt(journalDocuments.id, cursor.id)))!);
+    }
+    const rows = await tx.select().from(journalDocuments).where(and(...filters)).orderBy(desc(journalDocuments.journal_date), desc(journalDocuments.id)).limit(data.limit + 1);
+    const entries = rows.slice(0, data.limit).map(canonicalJournalResult);
+    return { entries, next_cursor: rows.length > data.limit ? encodeCursor({ journal_date: entries.at(-1)!.journal_date, id: entries.at(-1)!.id }) : null };
+  });
+}
+async function recentJournal(tx: Store, ownerId: string) {
+  await copyOwnedLegacyDocuments(tx, ownerId);
+  const rows = await tx.select().from(journalDocuments).where(eq(journalDocuments.owner_id, ownerId)).orderBy(desc(journalDocuments.created_at), desc(journalDocuments.id)).limit(3);
+  return rows.map(canonicalJournalResult);
 }
 export async function getVoiceContext(db: Database, ownerId: string, checkinId: string) {
   return write(db, async (tx) => {
@@ -316,9 +322,116 @@ export async function getVoiceContext(db: Database, ownerId: string, checkinId: 
     const context = await readContext(tx, ownerId);
     const revisions = Object.fromEntries(context.pages.map((p) => [p.id, p.revision]));
     const [updated] = await tx.update(checkinSessions).set({ voice_context_revisions: revisions, updated_at: now() }).where(and(eq(checkinSessions.id, checkinId), eq(checkinSessions.owner_id, ownerId))).returning();
-    const recent = await tx.select().from(journalEntries).where(eq(journalEntries.owner_id, ownerId)).orderBy(desc(journalEntries.created_at), desc(journalEntries.id)).limit(3);
-    const recentEntries: JournalEntryResult[] = [];
-    for (const row of recent) recentEntries.push(await entryResult(tx, row));
+    const recentEntries = await recentJournal(tx, ownerId);
     return { checkin: publicCheckin(updated!), ...context, context_revisions: revisions, recent_journal_entries: recentEntries };
+  });
+}
+
+export type VoiceConversation = typeof voiceConversations.$inferSelect & { saved_entry_id: string | null };
+function publicConversation(row: typeof voiceConversations.$inferSelect): VoiceConversation { return { ...row, saved_entry_id: row.last_entry_id }; }
+async function verifyConversationDevice(tx: Store, ownerId: string, source: "app" | "atech", deviceId?: string | null) {
+  if (source === "app") {
+    if (deviceId) throw new DomainError(422, "invalid_device_source", "App conversations cannot claim a device.");
+    return;
+  }
+  if (!deviceId) throw new DomainError(403, "device_access_denied", "A verified provisioned device is required.");
+  const [device] = await tx.select({ id: devices.id }).from(devices).where(and(eq(devices.id, deviceId), eq(devices.owner_id, ownerId)));
+  if (!device) throw new DomainError(403, "device_access_denied", "The device is not currently provisioned to this owner.");
+}
+async function readConversation(tx: Store, ownerId: string, conversationId: string): Promise<VoiceConversation> {
+  validate(recordIdSchema, conversationId);
+  const [conversation] = await tx.select().from(voiceConversations).where(and(eq(voiceConversations.id, conversationId), eq(voiceConversations.owner_id, ownerId)));
+  if (!conversation) throw missing();
+  await verifyConversationDevice(tx, ownerId, conversation.source, conversation.device_id);
+  return publicConversation(conversation);
+}
+function assertConversationActive(conversation: VoiceConversation) {
+  if (conversation.state !== "active") throw new DomainError(409, "conversation_stopped", "This conversation is stopped. Start a new conversation before writing.");
+}
+// The device caller authenticates the current transport credential before
+// supplying source=atech and its device ID. No app payload selects an owner.
+export async function createVoiceConversation(db: Database, ownerId: string, input: VoiceConversationCreateInput) {
+  const data = validate(voiceConversationCreateSchema, input);
+  const request = { kind: "voice_conversation_create", input: data };
+  return write(db, async (tx) => {
+    await verifyConversationDevice(tx, ownerId, data.source, data.device_id);
+    const replay = await lookupOperation<VoiceConversation>(tx, ownerId, data.operation_id, request);
+    if (replay) return replay;
+    await assertAvailableOperation(tx, ownerId, data.operation_id);
+    if (data.entry_id) await readEntry(tx, ownerId, data.entry_id);
+    const timestamp = now();
+    const [created] = await tx.insert(voiceConversations).values({ id: id(), owner_id: ownerId, source: data.source, device_id: data.device_id ?? null, target_entry_id: data.entry_id ?? null, created_at: timestamp, updated_at: timestamp }).returning();
+    return recordOperation(tx, ownerId, data.operation_id, request, publicConversation(created!));
+  });
+}
+export async function readVoiceConversation(db: Database, ownerId: string, conversationId: string) {
+  return write(db, (tx) => readConversation(tx, ownerId, conversationId));
+}
+export async function stopVoiceConversation(db: Database, ownerId: string, conversationId: string) {
+  return write(db, async (tx) => {
+    const conversation = await readConversation(tx, ownerId, conversationId);
+    if (conversation.state === "stopped") return conversation;
+    const [stopped] = await tx.update(voiceConversations).set({ state: "stopped", updated_at: now() }).where(and(eq(voiceConversations.id, conversationId), eq(voiceConversations.owner_id, ownerId))).returning();
+    return publicConversation(stopped!);
+  });
+}
+export async function getConversationContext(db: Database, ownerId: string, conversationId: string) {
+  return write(db, async (tx) => {
+    const conversation = await readConversation(tx, ownerId, conversationId);
+    assertConversationActive(conversation);
+    const context = await readContext(tx, ownerId);
+    return { conversation, ...context, context_revisions: Object.fromEntries(context.pages.map((page) => [page.id, page.revision])), recent_journal_entries: await recentJournal(tx, ownerId) };
+  });
+}
+async function insertDirectJournal(tx: Store, ownerId: string, input: JournalCreateInput, source: "app" | "atech", conversation?: VoiceConversation) {
+  const context = await readContext(tx, ownerId);
+  const timestamp = now();
+  const [created] = await tx.insert(journalDocuments).values({ id: id(), owner_id: ownerId, title: input.title, content: input.content, properties: input.properties, original_text: input.original_text ?? "", journal_date: journalDate(context.profile.timezone, new Date(timestamp)), source, device_id: conversation?.device_id ?? null, capture_id: conversation?.id ?? id(), voice_conversation_id: conversation?.id ?? null, session_id: null, operation_id: input.operation_id, context_revisions: Object.fromEntries(context.pages.map((page) => [page.id, page.revision])), created_at: timestamp, updated_at: timestamp }).returning();
+  return canonicalJournalResult(created!);
+}
+export async function createJournalEntry(db: Database, ownerId: string, input: JournalCreateInput) {
+  const data = validate(journalCreateSchema, input);
+  const request = { kind: "journal_create", input: data };
+  return write(db, async (tx) => {
+    const replay = await lookupOperation<JournalEntryResult>(tx, ownerId, data.operation_id, request);
+    if (replay) return replay;
+    await assertAvailableOperation(tx, ownerId, data.operation_id);
+    return recordOperation(tx, ownerId, data.operation_id, request, await insertDirectJournal(tx, ownerId, data, "app"));
+  });
+}
+export async function createJournalForConversation(db: Database, ownerId: string, conversationId: string, input: JournalCreateInput) {
+  const data = validate(journalCreateSchema, input);
+  const request = { kind: "conversation_journal_create", conversation_id: conversationId, input: data };
+  return write(db, async (tx) => {
+    const conversation = await readConversation(tx, ownerId, conversationId);
+    const replay = await lookupOperation<JournalEntryResult>(tx, ownerId, data.operation_id, request);
+    if (replay) return replay;
+    assertConversationActive(conversation);
+    if (conversation.target_entry_id) throw new DomainError(409, "conversation_target_exists", "This conversation targets an existing entry. Update that entry instead of creating another.");
+    await assertAvailableOperation(tx, ownerId, data.operation_id);
+    const entry = await insertDirectJournal(tx, ownerId, data, conversation.source, conversation);
+    await tx.update(voiceConversations).set({ last_entry_id: entry.id, updated_at: now() }).where(and(eq(voiceConversations.id, conversationId), eq(voiceConversations.owner_id, ownerId)));
+    return recordOperation(tx, ownerId, data.operation_id, request, entry);
+  });
+}
+export async function patchJournalForConversation(db: Database, ownerId: string, conversationId: string, entryId: string, input: JournalPatchInput) {
+  validate(recordIdSchema, entryId);
+  const data = validate(journalPatchSchema, input);
+  const request = { kind: "conversation_journal_patch", conversation_id: conversationId, entry_id: entryId, input: data };
+  return write(db, async (tx) => {
+    const conversation = await readConversation(tx, ownerId, conversationId);
+    const replay = await lookupOperation<JournalEntryResult>(tx, ownerId, data.operation_id, request);
+    if (replay) return replay;
+    assertConversationActive(conversation);
+    if (conversation.target_entry_id && conversation.target_entry_id !== entryId) throw new DomainError(409, "conversation_target_conflict", "Update the owned entry selected for this conversation.");
+    await assertAvailableOperation(tx, ownerId, data.operation_id);
+    const entry = await readEntry(tx, ownerId, entryId);
+    if (entry.revision !== data.expected_revision) throw conflict();
+    const context = await readContext(tx, ownerId);
+    const timestamp = now();
+    const [updated] = await tx.update(journalDocuments).set({ title: data.title ?? entry.title, content: data.content ?? entry.content, properties: data.properties ?? entry.properties, revision: entry.revision + 1, updated_at: timestamp, context_revisions: Object.fromEntries(context.pages.map((page) => [page.id, page.revision])) }).where(and(eq(journalDocuments.id, entryId), eq(journalDocuments.owner_id, ownerId), eq(journalDocuments.revision, data.expected_revision))).returning();
+    if (!updated) throw conflict();
+    await tx.update(voiceConversations).set({ last_entry_id: entryId, updated_at: timestamp }).where(and(eq(voiceConversations.id, conversationId), eq(voiceConversations.owner_id, ownerId)));
+    return recordOperation(tx, ownerId, data.operation_id, request, canonicalJournalResult(updated));
   });
 }

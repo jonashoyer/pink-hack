@@ -13,11 +13,11 @@ export function createAssistantRoutes(db: Database, config: JournalAgentConfig):
     await next();
   });
   app.use("*", bodyLimit({ maxSize: 128 * 1024, onError: () => { throw new DomainError(413, "body_too_large", "Assistant request exceeds 128 KiB."); } }));
-  app.post("/checkins/:id/agent", async (c) => {
+  app.post("/voice/sessions/:id/agent", async (c) => {
     let raw: unknown;
     try { raw = await c.req.json(); } catch { throw new DomainError(422, "invalid_input", "A valid JSON body is required."); }
     const input = validate(journalAgentRequestSchema, raw);
-    const output = await runJournalAgent(db, config, { ownerId: c.get("userId"), checkinId: c.req.param("id"), messages: input.messages }, c.req.raw.signal);
+    const output = await runJournalAgent(db, config, { ownerId: c.get("userId"), voiceSessionId: c.req.param("id"), delegationId: input.delegation_id, entryId: input.entry_id, messages: input.messages }, c.req.raw.signal);
     const response = journalAgentResponseSchema.safeParse(output);
     if (!response.success) throw new DomainError(502, "assistant_unavailable", "The assistant could not finish. Please try again.");
     return c.json(response.data);

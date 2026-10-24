@@ -10,7 +10,7 @@ Companion to [the PRD](../PRD.md), checked against public docs on 2026-10-24. Ou
 
 1. Open [atech.dev/editor](https://atech.dev/editor) in desktop Chromium with a USB-C data cable.
 2. Start with the [standalone PCM test prompt](../ATECH_PCM_TEST_PROMPT.md). Confirm hardware and ports; match the generated diagram to the board. Moving modules requires updating the diagram and uploading again.
-3. Upload the local test over USB-C. After its physical pass, use the integration prompt with 2.4 GHz WiFi and the single deployed backend connection.
+3. Upload the local test over USB-C. After its physical pass, wait for the verified Vercel connection contract before uploading network firmware. The Azure VM endpoint is retired.
 4. Review firmware and its JSON contract; click **Upload Code**. Check **Receiving frames**. Copy the bridge's project ID from **Docs → Your project**.
 5. Verify local recorded speech playback, then real GPT-Live speech through the deployed backend. For upload failures, close competing serial connections, check the cable, and reconnect/reset.
 
@@ -31,12 +31,12 @@ Requested inventory, subject to confirmation. Double-width modules need adjacent
 
 ## Integration and interactions
 
-Firmware handles audio, button events and status. The single deployed backend owns the device connection, GPT-Live audio relay, context, confirmation and storage. Lovable reads saved entries. There is no separate laptop bridge or bridge configuration. Hold-to-talk, interruption and recovery are specified in the root integration prompt.
+Firmware handles audio, button events and status. The target is the existing Vercel project with Turso storage. The device transport and direct-write session contract are pending verification. There is no separate laptop bridge or bridge configuration. Hold-to-talk, interruption and recovery are specified in the root integration prompt.
 
 Standard modules expose sound levels and tones. The [Clawd example](https://atech.dev/code/clawd.cpp) adds speech PCM, which needs adaptation/testing. At 16 kHz mono signed16, raw audio is 32 KB/s; 115200-baud JSON serial is insufficient. Verify WiFi or a faster path. A gateway project ID supplies routing, not app authentication.
 
 ## Paste-ready firmware prompt
 
-Use [ATECH_PCM_TEST_PROMPT.md](../ATECH_PCM_TEST_PROMPT.md) for local capture/replay testing, then [ATECH_PROMPT.md](../ATECH_PROMPT.md) for the fixed backend/GPT-Live connection. The integration follows all owned context pages, one flexible Journal with BlockNote content, day plans inside that content, and voice-confirmed writes. Schema, storage and deployment remain with the backend owner.
+Use [ATECH_PCM_TEST_PROMPT.md](../ATECH_PCM_TEST_PROMPT.md) now for local capture/replay. Use [ATECH_PROMPT.md](../ATECH_PROMPT.md) only after the Vercel contract is verified. The agent writes directly on user requests to one flexible Journal with BlockNote content. Day plans stay inside entries; there is no required proposal/confirmation stage. Schema, storage and deployment remain with the backend owner.
 
 Sources: [Atech setup and protocol](https://atech.dev/docs), [module reference](https://atech.dev/llms.txt), [PCM example](https://atech.dev/code/clawd.cpp). Shared application operations are in [app structure](app-structure.md).

@@ -48,6 +48,8 @@ export const propertiesSchema = z.record(safeName, z.union([scalar, z.array(scal
   if (Object.keys(v).length > 100 || Buffer.byteLength(JSON.stringify(v), "utf8") > 50000) c.addIssue({ code: "custom", message: "Properties exceed limits" });
 });
 export const journalDraftSchema = z.object({ title, original_text: z.string().max(30000), content: blockContentSchema, properties: propertiesSchema }).strict();
+export const journalCreateSchema = z.object({ title, content: blockContentSchema, properties: propertiesSchema, original_text: z.string().max(30000).optional(), operation_id: operationIdSchema }).strict();
+export const voiceConversationCreateSchema = z.object({ source: z.enum(["app", "atech"]), device_id: recordIdSchema.optional(), entry_id: recordIdSchema.optional(), operation_id: operationIdSchema }).strict();
 const editable = { title: title.optional(), content: blockContentSchema.optional(), properties: propertiesSchema.optional(), original_text: z.string().max(30000).optional() };
 export const journalPatchSchema = z.object({ expected_revision: revision, operation_id: operationIdSchema, title: editable.title, content: editable.content, properties: editable.properties }).strict().refine((v) => ["title", "content", "properties"].some((key) => v[key as keyof typeof v] !== undefined), "Supply an editable field");
 export const updateDraftSchema = z.object({ entry_id: recordIdSchema, expected_entry_revision: revision, expected_revision: revision, draft: journalDraftSchema }).strict();
@@ -76,3 +78,6 @@ export type JournalPatchInput = z.infer<typeof journalPatchSchema>;
 export type ConfirmInput = z.infer<typeof confirmSchema>;
 export type CommitInput = z.infer<typeof commitSchema>;
 export type CreateCheckinInput = z.infer<typeof createCheckinSchema>;
+
+export type JournalCreateInput = z.infer<typeof journalCreateSchema>;
+export type VoiceConversationCreateInput = z.infer<typeof voiceConversationCreateSchema>;

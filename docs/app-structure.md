@@ -2,69 +2,38 @@
 provenance: "Unvetted Synthetic"
 ---
 
-# Flexible app structure and API contracts
+# Simple page and Journal API
 
-This implements the intent in [the correction brief](flexible-pages-journal.md) and [PRD](../PRD.md). It supersedes fixed page kinds, metrics, and separate plan/observation product resources. The routes below are the agreed target; [backend.md](backend.md) remains the authority for actual implemented endpoints and verification evidence.
+This follows [the latest PRD](../PRD.md) and [coordinator correction](flexible-pages-journal.md). The active product has custom pages, one Journal, and direct agent writes. There is no stored proposal or required check-in/draft/confirm/commit sequence. [backend.md](backend.md) remains the record of actual implementation evidence.
 
-## Ownership and runtime
+## Runtime and ownership
 
-The existing backend thread owns source, dependencies, migrations, application reasoning, and runtime configuration. The PRD/API thread owns these contracts and reconciliation. One assigned Lovable worker owns every remote frontend mutation in testing project `ee916e8c-7f2f-4989-9c6e-cedcff1793b5`. The Atech owner handles device and bridge details.
+Keep the existing Hono/Node, Better Auth, Drizzle/libSQL backend. The backend owner handles source, runtime, migrations, and deployment in the existing [Vercel project](https://vercel.com/quasr/pink-hack). The existing Turso database is the sole deployed store; do not provision another database service/container.
 
-Keep Hono/Node, Better Auth, Drizzle SQLite/libSQL, and the existing transaction/revision/idempotency checks. Lovable is the external frontend, not another storage backend.
+Load root `.env` `DATABASE_URL` and `DATABASE_API_KEY` privately and verify their mapping to libSQL authentication. Provider keys also stay server-side. Local SQLite checks are separate from Turso persistence evidence.
 
-The existing Turso database is the sole deployed store. Local SQLite remains useful for isolated development tests; deployed authentication and product records use the configured Turso database. The backend owner loads root `.env` `DATABASE_URL` and `DATABASE_API_KEY` privately and maps the latter to the libSQL driver's `authToken`, or the runtime's `DATABASE_AUTH_TOKEN` field as required. Root-file values must explicitly reach the server's environment configuration; loading an unrelated app `.env` is insufficient. Validate token mapping with actual Turso access rather than assuming a successful local test proves it. No credential or database URL belongs in frontend code or logs.
+The sole Lovable writer owns the canonical testing frontend. It consumes the backend API with Better Auth session credentials. No database/provider credentials go into the browser. Exact origins and the verified Vercel runtime API URL come from the backend owner; remove previous Azure hosting origins. Azure GPT-Live is the voice provider, not the app host.
 
-The known local API is `http://localhost:3000`. A verified public HTTPS API URL has not been supplied. The developer authorized one deployed demo service; the backend owner is preparing it and must provide one fixed reachable URL and the exact actual frontend origin. CORS and origin checks do not replace authentication.
+Vercel native WSS/device-relay support is being checked. No device WSS URL or replacement bridge is promised until the owner verifies platform capability and reports the result.
 
-The same service hosts the device audio relay and one authenticated WSS ingress. The owner publishes the fixed device JSON/binary contract and PCM rate/encoding/chunk limits. No laptop bridge, bridge configuration product, or environment selector is part of this demo. Actual authenticated device binding and bidirectional audio remain unverified.
+## Frontend and records
 
-Deployment creates only the app/device-relay service. It does not provision a database service/container or use that service's filesystem as primary persistence. The assigned cleanup worker owns removal of this project's obsolete non-Turso deployed database only; backend migration and configuration stay with the backend owner.
+The sidebar contains custom page titles, Add page, and Journal. The selected page or Journal entry uses the standard BlockNote core/react/shadcn editor. Save native document JSON; derived Markdown/text is not a second editable source.
 
-## Minimal frontend
-
-    Sidebar
-      Add page
-      User-created page titles
-      Journal
-
-    /pages/$pageId             Arbitrary context page editor
-    /journal                   Fixed Journal table
-    /journal/$entryId          Properties and editable entry body
-    /sign-in                   Authentication
-
-Voice controls and connection/confirmation status accompany the selected page or Journal. There are no compulsory Today, About me, Patterns, personal-needs, or medical-needs destinations.
-
-Use `@blocknote/core`, `@blocknote/react`, and `@blocknote/shadcn`. Mount the editor on the client, save `editor.document`, and load saved blocks as `initialContent` using the chosen package version's documented lifecycle. Validate that lifecycle in the real Lovable scaffold. Native JSON is authoritative; Markdown exports or plain text are derived context only.
-
-The Journal view derives visible property columns from stored entries. Do not build a second database-definition product. The standard title/date/source metadata coexists with custom properties. Day plans are ordinary content blocks.
-
-## Record contracts
-
-| Record | Current target fields |
+| Record | Fields |
 | --- | --- |
-| Page | `id`, `title`, `content`, `revision`, `created_at`, `updated_at`; authenticated owner stored server-side |
-| JournalDraft | `title`, `original_text`, `content`, `properties` |
-| JournalEntry | Draft fields plus `id`, `journal_date`, `source`, `context_revisions`, `revision`, UTC timestamps, capture/session/operation metadata |
-| Checkin | Existing session/stage/draft/revision metadata plus create/update action, optional bound target entry and expected target revision, confirmation, saved result |
-| Profile/device | Existing authenticated ownership/runtime preferences; paired device identity when implemented |
+| Page | `id,title,content,revision,created_at,updated_at` |
+| JournalEntry | `id,title,content,properties,original_text,journal_date,source,context_revisions,revision,created_at,updated_at`, creation operation metadata |
+| VoiceSession | Owned session identity, provider session metadata, optional current entry reference; no held journal document |
+| Auth/device | Existing account and authenticated device metadata where supported |
 
-`content` is an array of bounded native BlockNote block objects. Support the block types installed by the frontend's selected standard editor. Preserve nested document structure and styles; validate object depth, size, and allowed block fields centrally. The backend owner records exact limits in the shared validator.
+`content` is bounded native BlockNote block JSON. The shared backend validator records supported types and limits. Preserve styles, nested blocks, and unrelated content.
 
-`properties` is a string-keyed map. Values are string, finite number, boolean, null, or lists of these scalars. Missing values remain absent. The shared validator bounds key lengths, item counts, list lengths, and total size. No mandatory energy/mood/symptom enum exists. A user's chosen Energy property may use a numeric scale, but that is content-specific.
+`properties` is a string-keyed map of text, finite numbers, booleans, null, or lists of those scalar values. Missing values remain absent. No fixed energy/mood/symptom schema exists. The Journal view derives custom columns from stored properties. A day plan is ordinary entry content.
 
-Dates and owner IDs remain server-controlled metadata. The server captures journal date from the user's timezone at check-in creation; multiple entries per day are allowed. Content revisions record the custom pages used by a proposal.
+## Direct REST contract
 
-## Storage change
-
-Add a generic `pages` table while preserving legacy `context_pages` for migration. Add native `content` and `properties` fields to `journal_entries`. Keep legacy note/observation/day-plan data for explicit migration/audit until the backend owner verifies preservation. The active API reads and writes the generic model.
-
-Apply and verify the required schema against the existing Turso database through its owner. Preserve existing Turso contents and validate authentication, confirmed create/update, idempotency, and retrieval after app-process restart. Existing local migration tests are separate evidence. Do not infer that obsolete deployed database cleanup authorizes deletion or replacement of Turso data.
-
-Day plans do not create a new table, separate API resource, or acceptance state. Existing plan/checklist text can be migrated into entry blocks without inventing facts or changing metric meaning. Migration records must identify source data and be verified before legacy cleanup. No permanent dual-write product model is required.
-
-## Agreed REST endpoints
-
-All `/api/v1` operations authenticate a Better Auth cookie or an in-memory session bearer token. The backend derives owner identity. Request names use snake_case. Resource responses below are direct records unless a wrapper is shown.
+All `/api/v1` routes authenticate the person or bound device. The backend derives the owner; no request body selects another user. Responses are direct records unless a wrapper is shown.
 
 | Method and route | Input | Result |
 | --- | --- | --- |
@@ -73,63 +42,46 @@ All `/api/v1` operations authenticate a Better Auth cookie or an in-memory sessi
 | `GET /api/v1/pages/:id` | Page ID | Page |
 | `POST /api/v1/pages` | `title,content,operation_id` | Page |
 | `PATCH /api/v1/pages/:id` | `expected_revision,operation_id,title?,content?` | Page |
-| `DELETE /api/v1/pages/:id` | `expected_revision,operation_id` | Archive acknowledgement; omitted from future context |
+| `DELETE /api/v1/pages/:id` | `expected_revision,operation_id` | Archive acknowledgement |
 | `GET /api/v1/journal` | `from?,to?,limit?,cursor?` | `{entries,next_cursor}` |
 | `GET /api/v1/journal/:id` | Entry ID | JournalEntry |
-| `PATCH /api/v1/journal/:id` | `expected_revision,operation_id,title?,content?,properties?` | JournalEntry |
-| `POST /api/v1/checkins` | `source,operation_id` | Checkin |
-| `GET /api/v1/checkins/:id` | Check-in ID | Checkin |
-| `PUT /api/v1/checkins/:id/draft` | `expected_revision,draft:JournalDraft` | Checkin |
-| `POST /api/v1/checkins/:id/prepare-update` | `entry_id,expected_entry_revision,expected_revision,draft` | Checkin with bound update target |
-| `POST /api/v1/checkins/:id/confirm` | `draft_revision,action:"save",operation_id` | Confirmation receipt and bound proposal metadata |
-| `POST /api/v1/checkins/:id/commit` | `confirmation_receipt,operation_id` | Saved JournalEntry |
-| `POST /api/v1/checkins/:id/cancel` | Empty body | Canceled state; no journal write |
+| `POST /api/v1/journal` | `title,content,properties,original_text?,operation_id` | Saved JournalEntry |
+| `PATCH /api/v1/journal/:id` | `expected_revision,operation_id,title?,content?,properties?` | Saved JournalEntry |
 
-PATCH preserves omitted fields. Supplied `content` or `properties` replaces that field, so the client or agent must merge an edit into the complete current field before submission. It must preserve unrelated blocks and properties. The expected revision prevents a stale merge from replacing newer writing.
+These are the agreed direct-write target. The owner must report source/runtime readiness; the new POST and voice signatures are not assumed to work merely because they are documented.
 
-Page creation and PATCH operations use stable operation IDs. Replay with the same payload returns the prior result; reuse with changed payload conflicts. The backend owner must report any final signature adjustment before frontend wiring.
+POST writes immediately. PATCH preserves omitted fields. Supplied content/properties replaces that field after the client/agent merges against the current record. Expected revision rejects stale merges. A stable mutation operation ID survives retries; identical replay returns the prior result and changed payload conflicts.
 
-## Confirmed create and update
+Journal creation operation metadata remains immutable provenance. A PATCH request's operation ID is separate retry metadata; do not compare it to the entry's creation operation ID to verify saving.
 
-A new check-in collects a generic draft. To update a saved entry, create a new check-in, read that entry, then prepare-update with its expected revision. Saved/canceled sessions remain terminal.
+## Voice agent
 
-Confirmation binds owner, check-in, draft revision, action, target entry/expected revision, and operation ID. Confirming an update cannot authorize a different entry or later revision. Draft changes invalidate confirmation. Commit atomically creates or updates the bound entry and records the saved session result. A repeated commit returns the original record. Revision mismatch rejects the whole mutation.
+The agent reads context and current entries, then calls `create_journal_entry` or `update_journal_entry` directly in response to user writing requests. Tools use the same authenticated services as POST/PATCH. The backend validates ownership, blocks/properties, expected revisions, and stable action/retry IDs.
 
-The authenticated client records explicit spoken confirmation or a deliberate UI action. This is independent of model tool execution. The model cannot mint a receipt or self-confirm. Speech fragments, unrelated replies, cancellation, and a draft changed during interruption do not authorize saving.
+There is no required prepare/confirm/commit tool chain, receipt minting, held proposal record, or separate review screen. The agent asks a normal conversational clarification if intent or the target entry is unclear. Stored page text is context, not permission to run commands.
 
-Direct manual editing calls the same storage services with revisions and operation IDs. Voice uses proposal/confirmation/commit for journal writes. There is no separate plan-state field in the generic flow.
+A successful tool returns the actual saved entry and revision. Failure is reported honestly. Stopping or interrupting cancels further agent work; already saved records remain editable. Normal unsaved editor text may remain locally, without becoming backend proposal storage.
 
-## Agent and context boundary
+## Owned voice-session target
 
-Tools use the same backend services:
+`POST /api/v1/voice/sessions` should accept `operation_id,transport:{type:"webrtc",sdp},entry_id?` without requiring a check-in. It returns the existing voice DTO `{id,provider,model,delegation,session:{id},transport:{type,sdp}}`. The outer ID is the owned app voice session; the inner ID belongs to the provider.
 
-| Tool | Behavior |
-| --- | --- |
-| `get_context` | Read all owned custom pages and relevant recent history |
-| `get_page`, `get_journal_entry`, `get_checkin` | Read current owned records and revisions |
-| `prepare_journal_draft` | Prepare a generic new-entry proposal |
-| `prepare_journal_update` | Prepare content/properties changes for a bound entry revision |
-| `commit_journal_entry` | Execute only with a matching existing confirmation receipt |
-| `cancel_checkin` | Cancel without saving |
+The target application callback is `POST /api/v1/voice/sessions/:id/agent` with `delegation_id,messages:[{role,content}],entry_id?`. It resolves the owner/target from trusted session state and current records. Return `{text,entries:[{id,revision}]}` only for actual persisted writes, with an empty entries list when none occurred. The client returns text to Live and refreshes Journal after writes. Final signatures must be verified by the backend owner before UI wiring.
 
-There is no model confirmation tool. The existing `POST /api/v1/voice/sessions/:id/tools` validates allowed names, arguments, ownership, and receipts. Success output identifies the saved entry/revision only after persistence.
+Azure client delegation provides metadata and lossy transcript fragments, not task text. Use current backend state, bounded/merged messages, and cancellation. The agent callback does not require a stored journal draft or check-in identity.
 
-All live owned custom pages are eligible context. Content supplies preferences and facts, not executable policy. The workflow tracks page revisions and handles context-size limits explicitly rather than silently dropping categories or pages. Reconcile existing user privacy choices without guessing sensitivity from page titles. Recent journal history is selected separately; every historical entry is not required on every turn.
+## Reusable client and auth
 
-## Reusable voice module and authentication
+`@backend/client` is private workspace code, not assumed published. The sole frontend writer can copy/adapt its two framework-independent source modules into remote `src/lib/voice/`, preserving relative imports and reporting changes to the backend owner.
 
-Existing `POST /api/v1/voice/sessions` accepts `checkin_id,operation_id,transport:{type:"webrtc",sdp}`. It returns `{id,provider,model,delegation,session:{id},transport:{type,sdp}}`. The outer ID is our voice record; the inner session ID is the provider's. The client validates the exact model, session, and delegation before enabling audio.
+Update `createVoiceConnection` to use the owned voice session and optional entry ID, without creating a check-in. Call start from a user action and close on stop/unmount. Validate the exact provider session/model before enabling audio and report graceful-close confirmation accurately.
 
-`@backend/client` is a private workspace package, not a published dependency. The sole Lovable writer can copy/adapt the two framework-independent source modules `backend/packages/client/src/index.ts` and `live-protocol.ts` into remote `src/lib/voice/`, retaining their relative import. Import `createVoiceConnection` locally. The backend owner owns upstream source; report changes rather than maintaining an unrelated protocol implementation.
+Better Auth sign-up/sign-in uses `/api/auth/*`. Use session cookies or an in-memory bearer token. Verify identity independently of context retrieval so an oversized context cannot prevent the user managing their pages.
 
-Supply `apiBaseUrl,checkinId,sessionToken,onStatus,onTranscript,onError,onDelegation`. Start from a user click, close on stop/unmount, and report `close().confirmed` accurately. The modules contain no provider secret or finance/demo storage.
+## Storage transition and checks
 
-Authentication uses `/api/auth/sign-up/email` and `/api/auth/sign-in/email`. Browser calls use credentials include or a session bearer token kept in memory. Provider keys never enter the client. A remote Lovable page must be able to reach the backend; local health checks do not establish that.
+Keep legacy check-in, draft, and receipt data/routes only as compatibility while the owner transitions active clients. Do not delete Turso or legacy contents to simplify the API. New journal writes use direct services and no separate proposal resource.
 
-Azure uses client delegation. `onDelegation` receives delegation metadata, bounded lossy transcripts, check-in ID, and an abort signal. It needs a trusted application reasoning workflow that retrieves current backend records and executes allowed tools. That callback/agent endpoint is not established by the transport module. Do not fabricate a successful callback or save while it is missing. The fixed demo connection uses the configured Azure provider; existing direct OpenAI code is not a product selector.
+Retain input limits and error envelope `{error:{code,message,retryable},request_id}`. Missing auth is 401, foreign-owned records 404, stale/state/operation conflicts 409, invalid input 422, and storage failure 503.
 
-## Failure and verification
-
-Retain the existing error envelope `{error:{code,message,retryable},request_id}`. Use 401 for missing auth, 404 for inaccessible records, 409 for revision/state/idempotency conflicts, 422 for invalid content/properties, and 503 for storage failure. A failed write retains its proposal. Automatic retries keep the same operation ID and never create a fresh paid voice session.
-
-The existing twelve-test foundation and Azure startup/close probe verify the prior schema and provider access respectively. New schema/migration, generic CRUD, voice-confirmed writes, application reasoning, cloud frontend, and real Atech audio need new evidence. No public HTTPS API URL or complete demo candidate is established.
+Verify direct authenticated POST/PATCH, arbitrary properties/blocks, owner isolation, stale revisions, same-operation replay, data preservation, and retrieval across app restart on existing Turso. Then exercise the real voice callback and frontend. Earlier staged-workflow tests and Azure access-only startup do not prove this simpler path.

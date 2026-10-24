@@ -4,7 +4,7 @@ provenance: "Unvetted Synthetic"
 
 # Flexible pages and journal correction
 
-The developer's 2026-10-24 coordinator instruction supersedes the fixed Today, Patterns, About me, personal/medical page types, fixed observation metrics, and separate day-plan records in earlier designs. This brief records the requested behavior and proposed minimal contract. It does not claim implementation is complete.
+The developer's 2026-10-24 coordinator instruction supersedes the fixed Today, Patterns, About me, personal/medical page types, fixed observation metrics, and separate day-plan records in earlier designs. The latest simplification also removes held journal proposals and a mandatory prepare/confirm/commit path. The voice agent writes directly when the user asks. This brief records the requested behavior and minimal contract, not completed implementation.
 
 ## Requested experience
 
@@ -16,7 +16,7 @@ Example: a person creates "What helps me" and "What I want to track" pages. The 
 
 The assistant reads all of the authenticated person's context pages and tailors the conversation to their content. The app makes this context use clear when starting voice. Page content supplies facts and preferences; it does not grant permissions or override backend ownership checks. Recent journal history is a separate context source, not a reason to send every historical entry on every turn.
 
-Most journal creation, property updates, and day-plan writing happen through the voice agent. The person can ask it to save or correct a check-in and change the plan. The app primarily provides page creation/editing, journal browsing, and direct correction of page content. It does not require a multi-stage form or separate plan-acceptance interface.
+Most journal creation, property updates, and day-plan writing happen through the voice agent. The person asks it to write a check-in or change a plan, and it writes through the authenticated API. It clarifies genuinely ambiguous intent or targets conversationally. There is no mandatory held proposal, confirmation receipt, or review screen. The app primarily provides page creation/editing, journal browsing, and direct correction of page content. Ordinary unsaved editor text can remain in browser memory without creating server proposal records.
 
 ## Editor recommendation
 
@@ -29,10 +29,12 @@ Official documentation inspected through Context7 describes `editor.document` fo
 ## Minimal application records
 
 - Context page: ID, authenticated owner, title, block `content`, revision, and timestamps. The page's purpose comes from its content rather than a fixed `kind` enum.
-- Journal entry: ID, authenticated owner, title, local journal date, flexible `properties`, block `content`, original selected user text, capture/session ID, operation ID, context revisions, revision, and timestamps.
-- Check-in session: existing backend workflow and draft state used to prepare, confirm, and save a journal entry exactly once.
+- Journal entry: ID, authenticated owner, title, local journal date, flexible `properties`, block `content`, optional original selected user text, source/voice-session metadata where relevant, creation operation ID, context revisions, revision, and timestamps.
+- Voice session: owned conversation identity and optional existing Journal entry target. Creating a check-in record is not a prerequisite for voice or journal writing. Existing check-in rows can remain for legacy compatibility.
 
-Keep existing authentication and per-user ownership. A property map can store simple text, number, boolean, null, and list values as JSON. Define its allowed value types and bounded size in one shared validator. Missing values remain absent. Use stable property names across entries; the journal view can derive visible columns from stored properties without requiring a new database-definition product.
+Keep existing authentication and per-user ownership. The existing Turso database is the sole deployed storage target; runtime credentials remain backend-only. A property map can store simple text, number, boolean, null, and list values as JSON. Define its allowed value types and bounded size in one shared validator. Missing values remain absent. Use stable property names across entries; the journal view can derive visible columns from stored properties without requiring a new database-definition product.
+
+Application hosting uses the existing [Vercel project](https://vercel.com/quasr/pink-hack). Azure remains the GPT-Live provider; the previously allocated Azure VM URL is not the frontend API target. The backend owner supplies the verified Vercel runtime origin. Same-service device WSS/audio relay capability must be verified for that hosting environment before it is claimed as working.
 
 The day plan belongs only in the journal entry's content. Fixed mood/energy/symptom columns and an observations table are not prerequisites for this flexible journal. Existing legacy records must be preserved or migrated explicitly; do not delete development data merely to simplify the new schema.
 
@@ -42,26 +44,20 @@ Reuse the current authenticated API and workflow owners. These are intended inte
 
 - List/read/create/update context pages, with arbitrary titles and the shared block content format.
 - `GET /api/v1/context` returns all owned context pages and their revisions, with explicit handling if bounded context cannot include them all. It must not silently omit a page because of a fixed personal/medical category.
-- List/read/update Journal entries with `properties` and `content`. Updates require the expected revision and preserve fields omitted from the update.
-- Existing check-in draft/save operations carry a generic journal draft. Remove the requirement for fixed observations or `proposed_plan.items`; the plan is part of content.
-- Voice tools expose context retrieval, draft preparation, confirmed journal save, and revision-checked entry updates through the same application services as the app.
+- `POST /api/v1/journal` accepts `{title,content,properties,original_text?,operation_id}` and immediately returns the saved JournalEntry.
+- `PATCH /api/v1/journal/:id` accepts `{expected_revision,operation_id,title?,content?,properties?}` and immediately returns the saved JournalEntry. The caller merges intended changes with current blocks/properties; the service preserves omitted fields and enforces the target revision. Unrelated blocks and properties must survive an agent edit.
+- Voice tools `create_journal_entry` and `update_journal_entry` call those same authenticated services in response to the user's writing request. Conversation working text stays in agent context; no new server proposal/draft storage is needed.
+- Voice initialization and application-agent callbacks use owned `voice_session` identity and an optional entry target, coherently across backend, shared client, and device relay. No check-in prerequisite or mandatory prepare/confirm/commit calls belong in the new path.
 
-A spoken save still requires the person's explicit confirmation of the current draft. Keep backend revision checks, idempotent operation IDs, owner validation, and transaction boundaries. The agent announces success only after the database confirms it. A failed write retains the draft. A repeated save returns the same entry. An outdated page edit returns a revision conflict instead of overwriting newer writing.
+The user's writing request initiates the write. Keep backend revision checks, stable retry/tool-action operation IDs, owner validation, input validation, and atomic writes. The agent announces success only after the database confirms it. A failed write reports the failure and retains working text in conversation or editor memory. Replaying the same operation returns the same result; reusing an ID with different content conflicts. An outdated edit returns a revision conflict instead of overwriting newer writing. Canceling work that has not been submitted performs no write; cancellation must not imply that an already persisted request was undone.
 
-Changing a day plan means updating the relevant journal page content after confirmation, preserving the rest of the page. The user need not manage a separate plan status or acceptance record. Model instructions should follow needs in the user's pages instead of forcing a fixed question order or hardcoded fatigue metrics.
+Changing a day plan means updating the relevant journal page content when the user asks, preserving the rest of the page. The user need not manage a separate plan status or acceptance record. Model instructions should follow needs in the user's pages instead of forcing a fixed question order or hardcoded fatigue metrics.
 
 ## Current implementation gaps
 
-Code inspected in the coordinator thread on 2026-10-24 still differs materially:
+Latest coordinator source inspection on 2026-10-24 found generic page list/read/create/update/archive routes, flexible block content/properties, and saved Journal PATCH. `backend/apps/server/src/routes/journal.ts` still lacked direct Journal POST and exposed legacy staged check-in routes. `backend/apps/server/src/routes/voice.ts` still required `checkin_id` for session creation. Those prerequisites need removing from the new direct-write path while preserving legacy records.
 
-- `backend/packages/db/src/schema/journal.ts` restricts context pages to `personal_needs` and `medical_needs`, stores fixed observations separately, and has a `day_plans` table.
-- `backend/apps/server/src/domain/contracts.ts` accepts only text/checklist sections and four fixed observation metrics; draft plans use a separate structured object.
-- `backend/apps/server/src/routes/journal.ts` exposes page PATCH but no page creation route and no saved journal PATCH route.
-- `backend/apps/server/src/routes/voice.ts` exposes only context/check-in reads and draft preparation. Its agent cannot confirm, save, or update a journal entry.
-- `backend/apps/server/src/voice/prompts.ts` directs a fixed questionnaire and says the person must save in the app.
-- The canonical Lovable testing project contains a static scaffold only. No integrated page editor or journal workflow has been established.
-
-The existing foundation's tests verify its earlier contract. They do not establish compliance with this correction.
+The canonical Lovable testing project's implemented frontend was inspected at `8bb2289d`. A subsequent identity/archive/PATCH-verifier correction is in progress. Final fixed-host wiring and revised voice-session/agent signatures are pending. Earlier tests, HTTPS health, and voice startup/close do not establish the new direct-write flow or real Atech persistence.
 
 ## Ownership and verification
 

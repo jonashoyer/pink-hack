@@ -7,4 +7,7 @@ try {
   await migrate(db, { migrationsFolder: fileURLToPath(new URL("../migrations/", import.meta.url)) });
   const result = await migrateLegacyData(db);
   console.log(JSON.stringify({ event: "database_migrated", result }));
+} catch {
+  console.error(JSON.stringify({ event: "database_migration_failed" }));
+  process.exitCode = 1;
 } finally { db.$client.close(); }
