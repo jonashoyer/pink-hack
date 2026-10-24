@@ -5,6 +5,9 @@
 #include <HTTPClient.h>
 #include <esp_system.h>
 #include <time.h>
+#if __has_include("private_wifi.h")
+#include "private_wifi.h"
+#endif
 
 namespace {
 constexpr const char* HOST = "pink-hack.vercel.app";
@@ -96,7 +99,11 @@ void VoiceTransport::tick(bool held) {
     }
     Event event;
     // SDK owns Serial reads and built-in button events. All network logs drain here.
-    for (int i=0; _events && i<3 && xQueueReceive(_events, &event, 0) == pdTRUE; ++i) Serial.println(event.line);
+    // Keep a complete JSON line queued until USB can accept all of it without
+    // waiting. SDK acknowledgements/button events can then never split a line.
+    if (_events && xQueuePeek(_events, &event, 0) == pdTRUE &&
+        Serial.availableForWrite() >= (int)(strlen(event.line) + 1) &&
+        xQueueReceive(_events, &event, 0) == pdTRUE) Serial.println(event.line);
 }
 void VoiceTransport::flushLocal() {
     _ready = false; _captureActive = false; _endPending = false; ++_discardSerial;
@@ -421,7 +428,12 @@ void VoiceTransport::network() {
     _ws.onEvent([this](WStype_t type, uint8_t* payload, size_t length) { websocketEvent(type, payload, length); });
     _wifi.setDebugOutput(false);
     WiFi.persistent(true); WiFi.mode(WIFI_STA); WiFi.setAutoReconnect(true); WiFi.setSleep(false);
-    WiFi.begin(); _wifiSince = millis(); _wifiRetryAt = _wifiSince;
+#ifdef PINKHACK_WIFI_SSID
+    WiFi.begin(PINKHACK_WIFI_SSID, PINKHACK_WIFI_PASSWORD);
+#else
+    WiFi.begin();
+#endif
+    _wifiSince = millis(); _wifiRetryAt = _wifiSince;
     state("wifi_saved_connecting");
     while (true) {
         uint32_t now = millis();

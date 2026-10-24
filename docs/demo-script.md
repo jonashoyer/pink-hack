@@ -8,7 +8,7 @@ provenance: "Unvetted Synthetic"
 
 ## Story
 
-The person is a composite from the team's Notion research (Persona 1), not a real patient. This is a scenario, not an observation of a patient. In the scenario, she is one to three years into hormone therapy after breast cancer, and her stiff hands and tiredness are worst in the mornings. She has no consistent record of these effects to bring to appointments. People around her assume that treatment ending means she is fine. Our hypothesis is that context-informed spoken journaling and a manageable day plan would help her organize that morning.
+The person, "Anna", is a demo alias for the team's current Notion composite Persona 1 ("Emma, The Compounding Burden"), not a real patient. Details will be reconciled with the seed manifest ([demo-seed.md](demo-seed.md)). This is a scenario, not an observation of a patient. In the scenario, she is one to three years into hormone therapy after breast cancer, and her stiff hands and tiredness are worst in the mornings. She has no consistent record of these effects to bring to appointments. People around her assume that treatment ending means she is fine. Our hypothesis is that context-informed spoken journaling and a manageable day plan would help her organize that morning.
 
 The demo shows one morning:
 
@@ -39,7 +39,7 @@ This is a research-informed hypothesis. No affected person has used the product.
 
 ## Demo content (synthetic, labeled)
 
-These two pages are created in the shared demo space only after the frontend owner's go-ahead. They contain preferences and tracking choices, not clinical data. Exact IDs are recorded in [demo validation](demo-validation.md).
+The seed worker creates these two pages in the shared demo space ([demo-seed.md](demo-seed.md)). This document does not write them. They contain preferences and tracking choices, not clinical data. Exact IDs are recorded in [demo validation](demo-validation.md).
 
 **What I want to track (demo)**
 

@@ -41,3 +41,34 @@ Public CA SHA-256 values are `ec989df46c8f4419ef2ee2517cad7619d555e4973f3307be69
 No device/serial connection, WiFi portal submission, HTTPS provision request, live provider session, real speech roundtrip, or Journal write was performed by this worker. No private SSID/password/token/header was created or requested. Root must verify the real portal, NVS persistence, runtime heap/TLS, voice quality and pacing, barge-in clearing, actual saved entry contents, network/function reconnect, and terminal stop/fresh-start against the deployed backend. Human hearing and a persisted-entry reread remain required for a physical voice claim. The firmware uses an expedient local drain deadline and library timeouts; these need target-device measurement.
 
 Compilation is finished. Root has sole USB/flash/live-test ownership. The worker will not start another build while root flashes.
+
+## Root hardware integration
+
+Root validated and uploaded the worker artifact above on 2026-10-24. SDK upload
+exited 0 and verified every written image hash. The board is ESP32-S3 revision
+0.2 with embedded 2 MB PSRAM; this firmware does not require PSRAM.
+
+Startup did not pass. SDK boot-report checks timed out at 5 and 12 seconds, and
+`voice_status` received no acknowledgement. After physical reset, USB captured
+repeating Core 0 unhandled-debug-exception panics with a corrupted scheduler
+backtrace. The light grid stayed blue. No onboard provisioning or live speech
+was reached.
+
+The microphone capture function has a compiled 5,248-byte frame against its
+6,144-byte task stack. Root changed only that stack to 8,192 bytes, matching the
+physically tested local microphone, and rebuilt successfully. Hardware retest
+is pending USB reconnection. This is a stack-exhaustion hypothesis, not yet a
+verified startup fix or physical voice result.
+
+The revised artifact is SHA-256
+`c5f46a5f9ba49bb0bcf8fbff13e71008098ee468635231551d763e275adc0c3b`.
+Its build exited 0. The next upload failed because the Mac no longer detected
+an Atech USB device, despite reported reconnection with the original cable.
+This revised artifact has not reached the board. BOOT/FLASH-button availability
+is being confirmed before attempting documented ESP32-S3 recovery.
+
+Backend owner verified terminal stop/cancel deployment
+`dpl_D4keCEU8SgHaPMTyzLEMuQdNKQ6u`, source `1bf7d24`, at the fixed
+`pink-hack.vercel.app` HTTPS/WSS host. It matches the firmware's identity
+retirement behavior. No device provisioning or provider audio probe accompanied
+that backend deployment.

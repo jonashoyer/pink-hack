@@ -20,7 +20,9 @@ void Microphone::begin() {
     if (i2s_set_pin(I2S_NUM_1, &pins) != ESP_OK) {
         i2s_driver_uninstall(I2S_NUM_1); return;
     }
-    _initialized = xTaskCreatePinnedToCore(task, "VoiceMic", 6144, this, 2, nullptr, 0) == pdPASS;
+    // Capture's compiled frame is ~5.2 KiB. Keep room for I2S and scheduler
+    // calls, matching the stack used by the physically tested SDK microphone.
+    _initialized = xTaskCreatePinnedToCore(task, "VoiceMic", 8192, this, 2, nullptr, 0) == pdPASS;
     if (!_initialized) i2s_driver_uninstall(I2S_NUM_1);
 }
 bool Microphone::startStream() {

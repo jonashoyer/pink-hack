@@ -48,7 +48,7 @@ The firmware sends only `start`, `audio_turn_end`, `interrupt`, `stop`, and `can
 
 Operation/session identity is one atomic NVS value. Disconnect, interrupt, and the proactive 270-second function reconnect retain it. Incomplete startup retries reuse the same creation UUID. No captured speech or write request is replayed. A dropped connection requires releasing and pressing again after readiness. Retry delay grows from 1 to at most 30 seconds with small jitter. HTTP 409 lease conflicts retry at 5-second intervals, allowing the 30-second lease to expire; 12 failures stop automatic retries. Other unidentified failures stop after 6. `voice_start` deliberately retries after that limit.
 
-Deliberate stop/cancel, server `stopped`, and `conversation_stopped` retire the session and mint a new creation UUID. A later deliberate `voice_start` starts a fresh conversation. This matches the backend owner's terminal stop/cancel correction; root must wait for that deployment before checking stop semantics. `conversation_stopped` retires identity and requires fresh start instead of repeatedly resuming a terminal session.
+Deliberate stop/cancel, server `stopped`, and `conversation_stopped` retire the session and mint a new creation UUID. A later deliberate `voice_start` starts a fresh conversation. The backend owner verified this correction in deployment `dpl_D4keCEU8SgHaPMTyzLEMuQdNKQ6u`, source `1bf7d24`, on 2026-10-24. Physical stop/restart testing remains pending. `conversation_stopped` retires identity and requires fresh start instead of repeatedly resuming a terminal session.
 
 ## Diagnostic protocol
 

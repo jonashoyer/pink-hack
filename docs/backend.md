@@ -74,6 +74,9 @@ Live has no documented PTT commit/output-cancel event. Turn end appends one seco
 
 ## Verification and operation
 
+Independent public-browser read check: `/app` opened without login and showed `Server connected`. Both retained demo context pages appeared in the sidebar and opened with their exact native paragraph content; the tracking title input was correct. Subsequent production GETs confirmed both remained at revision 1. No editing, saving, seeding, cleanup, voice start or device provisioning occurred during this check. Journal was empty and Start was visibly unavailable on the published pre-copy frontend, consistent with its pending Stop-aware integration.
+
+
 Final voice-fix source `1bf7d24ceebd8ae706aacfee74624ffe3a7c77fc` was pushed and deployed READY as `dpl_D4keCEU8SgHaPMTyzLEMuQdNKQ6u`, immutable URL `https://pink-hack-e6yzy81tk-quasr.vercel.app`, fixed alias `https://pink-hack.vercel.app`. Final public-origin GET 200/OPTIONS 204 passed with exact CORS and no cookies. A read-only synthetic callback exercised no-write transient failure recovery in real Turso, followed by deployed exact replay, changed-request 409, idempotent Stop 200, persisted stopped state and late-agent 409. No Journal writes, context edits, provider requests or device provisioning occurred. Only its exact synthetic conversation/receipt metadata was cleaned up.
 
 Canonical retained demo context is owned by the population worker and recorded in [demo-seed.md](demo-seed.md). Backend testing will not delete/reseed those pages or seed Journal. The sole frontend writer owns the one corrected genuine spoken browser loop after copying the frozen Stop-aware client. This is pending, separate from the successful storage and synthetic correctness gates.

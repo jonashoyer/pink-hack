@@ -30,8 +30,11 @@ It provides SDK firmware, a streaming microphone extension and a Python voice br
 Its laptop bridge and Claude Code integration do not belong in our demo architecture.
 The example was source-inspected; its authors do not establish hardware audio acceptance.
 
-The published SDK provides USB serial transport only. Direct WiFi/WSS needs firmware
-adaptation; use the verified single Vercel backend at `https://pink-hack.vercel.app`,
+The published SDK provides USB serial transport only. Native WiFi/WSS code is in
+[hardware/atech-voice](../hardware/atech-voice/README.md). Build and driver tests
+passed; initial physical startup crashed, and the revised build awaits USB recovery.
+[Current evidence](../hardware/atech-voice/VERIFICATION.md) separates these results.
+Use the verified single Vercel backend at `https://pink-hack.vercel.app`,
 existing Turso storage and Azure Live provider. App and device share one fixed
 server-owned demo user; no sign-in or account-session token is required. Device
 transport retains its private Bearer credential bound to `demo-user`. Provision it

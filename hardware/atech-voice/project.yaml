@@ -8,6 +8,8 @@ modules:
   - {id: neopixel, instance: led, port: 4}
 code:
   setup: |
+    // Native USB defaults to 256 TX bytes; status JSON must fit atomically.
+    Serial.setTxBufferSize(4096);
     spk.setVolume(0.4f);
     led.setBrightness(20);
     VoiceTransport::instance().begin(mic, spk);

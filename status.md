@@ -9,9 +9,9 @@ Public landing verified · Check-in 15:00 · Demo 16:30 · Europe/Copenhagen · 
 
 | Track | Status | Next | Owner |
 | --- | --- | --- | --- |
-| App | Public CORS verified; voice gated | Copy final stop-aware client; coordinated voice loop | Lovable writer |
+| App | Connected; corrected voice-client update running, not published | Publish enabled Start, then user microphone test | Lovable writer |
 | API | Deployed: replay/Stop/public CORS verified; 64 tests | Verify spoken browser loop | Backend owner |
-| Atech | Startup crash; stack fix built; USB disconnected | Reconnect/reflash, then verify WiFi/voice | Atech owner + user reconnect |
+| Atech | Startup fixed; board stable; diagnostic output fix running | Reflash output fix, then WiFi setup and voice test | Atech owner |
 | Demo | Two synthetic pages seeded; landing live; voice demo pending | Final voice integration; coordinated save/reload; submission UNKNOWN | Coordinator + frontend/demo workers |
 
 [Public landing](https://pink-hack-journal.lovable.app/) · [App](https://pink-hack-journal.lovable.app/app) · [Lovable editor](https://lovable.dev/projects/ee916e8c-7f2f-4989-9c6e-cedcff1793b5) · [API](https://pink-hack.vercel.app)
