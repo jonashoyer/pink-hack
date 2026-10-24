@@ -1,5 +1,7 @@
 # Working agreements
 
+This hactahon notion: https://app.notion.com/p/luxed/Hackathon-Build-for-Impact-403e7bbddae88079adbcdc23eb6a92a3
+
 - Use existing code, tools, and conventions where helpful. Preserve others' work and keep changes focused on the task.
 - Delegate when it helps. Give agents clear ownership, coordinate shared work, and avoid redundant investigation or validation.
 - Validate in proportion to the task and risk. Ground conclusions in evidence; distinguish confirmed behavior, assumptions, and remaining gaps.

@@ -1,0 +1,35 @@
+{
+  "name": "backend",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "check-types": "turbo run check-types",
+    "test": "pnpm --filter server test",
+    "setup:local": "node scripts/setup-env.mjs",
+    "dev:server": "turbo run dev -F server --",
+    "db:push": "turbo run db:push -F @backend/db --",
+    "db:studio": "turbo run db:studio -F @backend/db --",
+    "db:generate": "turbo run db:generate -F @backend/db --",
+    "db:migrate": "turbo run db:migrate -F @backend/db --",
+    "env:generate": "varlock codegen --path ./apps/server/ && varlock codegen --path ./packages/db/",
+    "postinstall": "varlock codegen --path ./apps/server/ && varlock codegen --path ./packages/db/",
+    "auth:generate": "cd apps/server && pnpm run auth:generate"
+  },
+  "dependencies": {
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@backend/config": "workspace:*",
+    "@types/node": "catalog:",
+    "turbo": "^2.11.7",
+    "typescript": "catalog:",
+    "varlock": "catalog:"
+  },
+  "packageManager": "pnpm@10.28.1"
+}
