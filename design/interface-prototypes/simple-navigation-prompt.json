@@ -1,4 +1,0 @@
-{
-  "tool": "built-in image generation",
-  "prompt": "Edit the referenced mobile app mockup with ONE focused navigation refinement. Preserve the exact Airy Sage style, device frame, dimensions, typography, layout, five symptoms, All selected, five-series chart, legend, record action, date selector and daily note. Change ONLY bottom navigation: remove Pages completely; replace the current Symptoms destination with a simple outlined house icon and label \"Home\", selected forest green. Keep Journal as the second and only other destination, inactive. Space the TWO destinations evenly in the bottom navigation. No third destination, no extra dashboard or menu. Home leads to this existing symptom overview; keep the large screen heading \"Symptoms\". Keep all five symptom selectors and All tab intact. No product name or logo changes. Same warm white and pale sage aesthetic. This is a fictional visual prototype."
-}

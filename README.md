@@ -2,14 +2,18 @@
 provenance: Unvetted Synthetic
 ---
 
-# Pink Hack
+# Here With You
 
 Project for The Pink Hack, Build for Impact. Started from the [hckthn template](https://github.com/jonashoyer/hckthn).
+
+**Approved interface:** [Here With You design](design/README.md) is the single source for branding, desktop/phone layouts, Home / Journal / Symptom navigation, and daily ratings. It includes exactly four screen references and one selected logo. [Frontend handoff](design/lovable-handoff.md) explains how to apply it to the existing Lovable project. Superseded designs are recoverable from Git checkpoint `5f9ba1c`.
+
+The existing [landing](https://pink-hack-journal.lovable.app/) and [app](https://pink-hack-journal.lovable.app/app) are routes in the separate Lovable frontend. This repository does not contain that frontend's components. Pushing the design files here does not automatically restyle or publish those pages; the public browser audit still found Pink Hack branding. The repository/package and deployment identifiers may remain `pink-hack` while the product name is Here With You.
 
 - [Hackathon skill](.agents/skills/hackathon/SKILL.md): coordinate main and worker threads, with guides for the [app scaffold and Vercel deploy](.agents/skills/hackathon/references/scaffold.md), [branding](.agents/skills/hackathon/references/branding.md), and a reusable HTML presentation.
 - [Hackathon playbook](docs/hackathon_playbook.md): a flexible thought scaffold for setup, ideas, planning, building, and the demo.
 - [AGENTS.md](AGENTS.md): coding guidelines; adapt to the project as needed.
-- [PRD](PRD.md): product requirements, app pages, guided check-in, and acceptance criteria.
+- [PRD](PRD.md): product requirements, approved interface direction, voice journaling, and acceptance criteria.
 - [App structure](docs/app-structure.md): data model, shared API contracts, voice boundary, and Atech bridge ownership.
 - [API readiness](docs/api-readiness.md): documented GPT-Live contracts and current test blockers.
 - [Backend setup and API](docs/backend.md): Hono/Node server, fixed-user Journal storage, and Lovable/Atech handoff.

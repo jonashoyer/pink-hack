@@ -22,7 +22,9 @@ The fixed-user backend is deployed and its no-user-token contract is verified. T
 
 ## Frontend and records
 
-The sidebar contains custom page titles, Add page, and Journal. The selected page or Journal entry uses the standard BlockNote core/react/shadcn editor. Save native document JSON; derived Markdown/text is not a second editable source.
+The approved [Here With You interface](../design/README.md) has Home / Journal / Symptom primary navigation on both desktop and phone. Context pages remain data and are reachable through secondary settings rather than a Pages tab. The selected context page or Journal entry uses the standard BlockNote core/react/shadcn editor. Save native document JSON; derived Markdown/text is not a second editable source. The external frontend still requires the [in-place migration](../design/lovable-handoff.md); approval of the images is not deployment evidence.
+
+The daily overall health rating and symptom charts are frontend requirements over the existing records, not new routes declared by this contract. Before implementing writes, align stable symptom/scale metadata and one source of truth for the local day's self-reported rating. Preserve generic properties and existing entries; do not add a competing health database. The approved design specifies the two scale directions and missing-data behavior.
 
 | Record | Fields |
 | --- | --- |

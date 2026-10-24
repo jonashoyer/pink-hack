@@ -9,6 +9,7 @@ Public landing verified · Check-in 15:00 · Demo 16:30 · Europe/Copenhagen · 
 
 | Track | Status | Next | Owner |
 | --- | --- | --- | --- |
+| Design | Here With You approved; repo references consolidated; live pages still use old branding/layout | Apply [single design](design/README.md) via [existing Lovable handoff](design/lovable-handoff.md); project access unavailable to this connection | Frontend owner |
 | App | Connected; corrected voice-client update running, not published | Publish enabled Start, then user microphone test | Lovable writer |
 | API | Deployed: replay/Stop/public CORS verified; 64 tests | Verify spoken browser loop | Backend owner |
 | Atech | Startup fixed; board stable; diagnostic output fix running | Reflash output fix, then WiFi setup and voice test | Atech owner |

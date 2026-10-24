@@ -1,0 +1,51 @@
+{
+  "product": "Here With You",
+  "status": "approved-visual-reference-not-deployed",
+  "specification": "README.md",
+  "theme": "theme.css",
+  "frontend_handoff": "lovable-handoff.md",
+  "navigation": [
+    "Home",
+    "Journal",
+    "Symptom"
+  ],
+  "public_frontend": {
+    "landing": "https://pink-hack-journal.lovable.app/",
+    "app": "https://pink-hack-journal.lovable.app/app",
+    "implementation_location": "external Lovable project; source not in this checkout",
+    "updated": false
+  },
+  "history_checkpoint": "5f9ba1c",
+  "assets": [
+    {
+      "role": "phone-app",
+      "path": "screens/app.png",
+      "sha256": "f3b3f79896054725aee67871c14f29ac800e537698a93a000bc07f5eb7c8e7ea"
+    },
+    {
+      "role": "web-home",
+      "path": "screens/web-home.png",
+      "sha256": "96c5c0d43f25156fb8bff2241d1e1f8e9e6e8f85f41746c9443bcc46b0345c78"
+    },
+    {
+      "role": "web-journal",
+      "path": "screens/web-journal.png",
+      "sha256": "b0fdc032e6390daa035616469d51c936ce932426d2650f82a9cf4680da588946"
+    },
+    {
+      "role": "web-symptom",
+      "path": "screens/web-symptom.png",
+      "sha256": "dd95ee1132351ec94afb0a39513da17deff074412f5f395c12a8ec0b13ad39f5"
+    },
+    {
+      "role": "selected-logo-reference",
+      "path": "assets/logo-reference.png",
+      "sha256": "3c8fe5a7408ab79d32ec69406aba8be709c18b2e5611f77762f93a6ee5becb8a"
+    },
+    {
+      "role": "image-provenance",
+      "path": "generation-prompts.json",
+      "sha256": "5b5e550e2c9ec682ca93109d805d980935ce1785cc7da5b9e70923fdcfbf0851"
+    }
+  ]
+}

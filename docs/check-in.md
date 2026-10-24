@@ -10,7 +10,7 @@ Collected on 2026-10-24 from the live Notion pages, the public check-in form, pr
 
 | Field | Answer | Evidence or remaining choice |
 | --- | --- | --- |
-| Project name | **To be supplied** | Blank in Notion. Pink Hack is the repository label, not an agreed product name. |
+| Project name | **Here With You** | Selected explicitly by the user in the design conversation; see [approved design](../design/README.md). Pink Hack remains the repository/event label. This does not submit or update the form. |
 | Team members, first names | Jonas, Klara, Chloé | Explicitly listed in Notion Event context. |
 | Problem, one line | Women living with the lasting effects of breast cancer treatment need support managing fatigue, symptoms, and everyday life between appointments. | Draft wording based on the Notion research and product brief. |
 | Solution, one line | A voice companion with a Lovable app and Atech interface for personalized check-ins, journaling, and manageable day plans. | Draft wording for the intended demo. The integrated app and Atech workflow has not been verified. |

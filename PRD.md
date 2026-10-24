@@ -2,13 +2,17 @@
 provenance: "Unvetted Synthetic"
 ---
 
-# Pink Hack product requirements
+# Here With You product requirements
+
+## Approved interface direction
+
+The user's selected design is [Here With You](design/README.md): the listening-line logo, calm minimal Airy Sage palette, **Home / Journal / Symptom** navigation on desktop and phone, and a self-reported daily overall health rating. That document is the single visual specification and supersedes earlier Pages/Journal-only navigation and Today/Patterns mockups. These are approved requirements, not verified live features. The separate Lovable frontend still needs the [in-place migration](design/lovable-handoff.md); this repository contains design references and backend code, not its route components.
 
 The developer's latest instruction removes Better Auth and uses one fixed server-owned user ID. The app opens directly into the shared demo journal, without accounts, sign-in, cookies, or user-session tokens. Direct voice-agent writing remains: no stored proposal, required draft review, or separate check-in approval workflow. [The coordinator brief](docs/flexible-pages-journal.md) records the corrections.
 
 ## Goal
 
-Build a Notion-style app with user-created context pages and one fixed Journal database. Each entry has flexible properties and an editable BlockNote page body. The assistant uses the person's pages to guide a conversation and writes new entries or changes existing content directly in response to their requests. A day plan is ordinary content inside the entry.
+Build Here With You around daily voice notes, a Journal, symptom trends, and a self-reported daily health rating. Retain user-created context pages and one fixed Journal database. Each entry has flexible properties and an editable BlockNote page body. The assistant uses the person's pages to guide a conversation and writes new entries or changes existing content directly in response to their requests. A day plan is ordinary content inside the entry.
 
 The app supports people describing their own needs, including the [event's cancer-aftercare example](docs/event-context.md). Page names, questions, and journal properties are chosen from those needs rather than fixed product categories.
 
@@ -22,9 +26,11 @@ This is an expedient hackathon design: all visitors share the same pages and Jou
 
 ## App
 
-The sidebar lists custom pages, Add page, and Journal. Pages and entry bodies use the same standard BlockNote React/shadcn editor. Save native block JSON and reload it into that editor. Plain text for model context is derived from the saved blocks.
+The primary desktop sidebar and phone bottom navigation both contain Home, Journal, and Symptom. Home shows today's self-reported rating, recording action, and note preview. Journal opens dated editable notes. Symptom shows the selected period's individual or combined symptom trends. Existing context pages remain available through secondary settings; preserve their records and the assistant's use of them. Pages and entry bodies use the same standard BlockNote React/shadcn editor. Save native block JSON and reload it into that editor. Plain text for model context is derived from the saved blocks.
 
-Journal is a table with date/title/source metadata and flexible property columns. Opening a row opens its editable body. Day-plan headings, paragraphs, and checkboxes live there, without a separate plan table or acceptance screen.
+Journal presents dated entries and their editable body as in the approved screenshots, retaining date/title/source metadata and flexible properties in the data model. The earlier table layout is not a second required design. Day-plan headings, paragraphs, and checkboxes live in the body, without a separate plan table or acceptance screen.
+
+Overall health is explicitly self-reported on 1 = very poor through 10 = very good, with missing values shown as Not rated. Symptom severity uses a separate 0 = none through 10 = severe scale where applicable. All overlays compatible individual symptom series without an aggregate health calculation. The design spec defines missing observations, dates, and source rules. Stable symptom metadata and one source of truth for a daily rating across multiple entries need implementation alignment; the screenshots do not add a backend API or schema. Do not derive ratings from qualitative speech or seed the illustrative 7/10 in real records.
 
 The voice agent handles writing. The user can also edit pages and journal entries directly. Normal unsaved editor text can remain locally while editing or recovering from a failed save; that is not a stored agent proposal workflow.
 
