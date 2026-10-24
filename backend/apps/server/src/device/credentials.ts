@@ -3,6 +3,7 @@ import type { Database } from "@backend/db";
 import { devices } from "@backend/db/schema/device";
 import { and, eq } from "drizzle-orm";
 import { DomainError } from "../domain/errors";
+import { DEMO_USER_ID, ensureDemoOwner } from "../demo-owner";
 import { write } from "../domain/store";
 
 export const DEMO_DEVICE_ID = "demo";
@@ -15,7 +16,7 @@ export function registerDeviceRevocation(db: Database, revoke: () => void) {
 }
 
 export async function provisionDevice(db: Database, ownerId: string) {
-  if (!ownerId) throw new DomainError(401, "unauthenticated", "Sign in to provision the demo device.");
+  if (!ownerId) throw new DomainError(401, "unauthenticated", "The server demo owner is required.");
   const token = randomBytes(32).toString("base64url");
   const timestamp = new Date().toISOString();
   const device = await write(db, async (tx) => {
@@ -36,9 +37,10 @@ export async function provisionDevice(db: Database, ownerId: string) {
 }
 
 export async function authenticateDevice(db: Database, authorization: string | undefined) {
+  await ensureDemoOwner(db);
   const match = /^Bearer ([A-Za-z0-9_-]{43})$/.exec(authorization ?? "");
   if (!match) throw new DomainError(401, "device_unauthenticated", "A device bearer token is required.");
-  const [device] = await db.select().from(devices).where(and(eq(devices.id, DEMO_DEVICE_ID), eq(devices.token_hash, hashDeviceToken(match[1]!))));
+  const [device] = await db.select().from(devices).where(and(eq(devices.id, DEMO_DEVICE_ID), eq(devices.owner_id, DEMO_USER_ID), eq(devices.token_hash, hashDeviceToken(match[1]!))));
   if (!device) throw new DomainError(401, "device_unauthenticated", "The device credential is invalid.");
   return device;
 }

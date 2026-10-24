@@ -6,15 +6,17 @@ provenance: "Unvetted Synthetic"
 
 The demo API is **https://pink-hack.vercel.app** in the existing [quasr/pink-hack Vercel project](https://vercel.com/quasr/pink-hack). Existing Turso is the only deployed database. Azure is the GPT-Live provider, not the application host. Lovable uses this API; Notion is not product storage.
 
-`backend/` is a Better-T-Stack pnpm workspace using Hono, Better Auth, Drizzle and libSQL. There is no Next.js requirement. Vercel's HTTP function exports a callable `getRequestListener` from the built `src/vercel.ts`. Its native device WebSocket function exports an **unlistened** Node HTTP server from `src/index.ts`; Vercel owns the listener. Both functions belong to this project and relay code runs inside this deployment. Local Node execution listens normally.
+`backend/` is a Better-T-Stack pnpm workspace using Hono, Drizzle and libSQL. There is no Next.js requirement. Vercel's HTTP function exports a callable `getRequestListener` from the built `src/vercel.ts`. Its native device WebSocket function exports an **unlistened** Node HTTP server from `src/index.ts`; Vercel owns the listener. Both functions belong to this project and relay code runs inside this deployment. Local Node execution listens normally.
 
-## Storage and authentication
+## Storage and fixed owner
 
-Root `.env` supplies `DATABASE_URL` and `DATABASE_API_KEY` privately. The key was verified as a database auth token with a non-disclosing connection check and is mapped to libSQL `authToken`. `DATABASE_AUTH_TOKEN` remains a compatibility alias. Vercel production variables contain these credentials, Better Auth configuration, Azure Live configuration and the Anthropic application-agent key. No credentials belong in frontend builds or firmware source.
+Root `.env` supplies `DATABASE_URL` and `DATABASE_API_KEY` privately. The key was verified as a database auth token with a non-disclosing connection check and is mapped to libSQL `authToken`. `DATABASE_AUTH_TOKEN` remains a compatibility alias. Vercel production variables contain these credentials, Azure Live configuration and the Anthropic application-agent key. No credentials belong in frontend builds or firmware source.
 
-All `/api/v1` routes require a Better Auth cookie or `Authorization: Bearer <session token>`. Owner identity is derived server-side. `/api/auth/sign-up/email`, `/sign-in/email`, `/sign-out` and `/get-session` are standard Better Auth routes. Sign-in exposes the bearer token through `set-auth-token`; keep it in browser memory. `GET /api/auth/get-session` returns user/session identity independently of context size. `GET /context` uses `profile.owner_id`, not `profile.id`.
+All app and voice requests use the server-owned `DEMO_USER_ID = "demo-user"`, exported from `src/demo-owner.ts`. `ensureDemoOwner(db)` inserts that legacy-compatible user row idempotently before app API/device requests. No account, login, cookie or session token is required. `/api/auth/*` routes are removed. Request owner fields are rejected; authorization/cookie/user headers cannot select another owner. Existing legacy users, sessions, accounts and owned records remain in Turso, under their original ownership, without being merged into the shared demo space.
 
-Exact allowed demo browser origins are the backend origin, `https://id-preview--ee916e8c-7f2f-4989-9c6e-cedcff1793b5.lovable.app`, and the authorized test harness `http://localhost:8080`. Both CORS and auth trusted origins use this allowlist. Data responses are `Cache-Control: no-store`. Password reset/email delivery are not configured.
+`createApp(db, config, providerFetch?)` no longer takes an auth object. Better Auth runtime, workspace package, dependencies, scripts and required env values are removed. `BETTER_AUTH_SECRET` and `BETTER_AUTH_URL` are removed from Vercel production. The retained database tables support old rows and foreign keys only.
+
+Exact allowed demo browser origins are the backend origin, `https://id-preview--ee916e8c-7f2f-4989-9c6e-cedcff1793b5.lovable.app`, and the authorized test harness `http://localhost:8080`. CORS is exact and does not enable credentials. Data responses are `Cache-Control: no-store`. `GET /context` exposes `profile.owner_id: "demo-user"`.
 
 ## Direct REST contract
 
@@ -40,11 +42,11 @@ Content is native BlockNote block JSON, not a fixed text/checklist section model
 
 Frozen validation lives in `src/domain/contracts.ts`: title 1–200 characters; content 200,000 UTF-8 bytes, eight block levels and 1,000 total blocks; properties 50,000 bytes, 100 keys and 100 values per list; original text 30,000 characters; request body 512 KiB. Context exceeds its explicit limit at 200 active pages or 500,000 bytes, returning `context_overflow` rather than silently dropping pages. Page list/archive and auth remain available to recover. Lists default to 30 and allow at most 100 items.
 
-Errors use `{error:{code,message,retryable},request_id}`: missing auth 401, inaccessible record 404, stale revision/invalid state 409, invalid input 422, storage failure 503. Ownership, revision validation and operation receipts surround atomic writes.
+Errors use `{error:{code,message,retryable},request_id}`: invalid device credential 401, inaccessible record 404, stale revision/invalid state 409, invalid input 422, storage failure 503. Ownership, revision validation and operation receipts surround atomic writes.
 
 ## Voice
 
-`createVoiceConnection` in `packages/client/src/index.ts` is framework-independent. Supply the fixed API origin, token getter, optional `entryId`, status/transcript callbacks and `onDelegation({voiceSessionId,entryId?,delegationId,transcripts,signal}) → Promise<string>`. Call start from a user action. It negotiates WebRTC through the authenticated API, waits for a matching provider `session.started`, and then enables capture/playback.
+`createVoiceConnection` in `packages/client/src/index.ts` is framework-independent. Supply the fixed API origin, optional `entryId`, status/transcript callbacks and `onDelegation({voiceSessionId,entryId?,delegationId,transcripts,signal}) → Promise<string>`. The `sessionToken` option is removed; browser requests use `credentials: "omit"` and Content-Type only. Call start from a user action. It negotiates WebRTC through the API, waits for a matching provider `session.started`, and then enables capture/playback.
 
 Session responses contain `{id,voice_session_id,provider,model,delegation,session:{id},transport:{type,sdp}}`. The two outer IDs alias the owned conversation; the nested ID belongs to Live. Azure client delegation calls the application agent and returns its `text` over correlated Live thinking events. Refresh Journal for returned `entries`; an empty list means no write during that delegation. Cadence fragments merge by adjacent role; a 24,000-character or 24-turn bound fails explicitly.
 
@@ -54,7 +56,7 @@ Owned `voice_conversations` stores metadata only. Active `journal_documents` is 
 
 ## Atech device contract
 
-Fixed endpoint: **wss://pink-hack.vercel.app/api/v1/device/audio**. The signed-in owner privately calls `POST /api/v1/device/provision {}`. It returns `{device_id,credential_revision,token,audio_path,audio:{type,rate,channels,sample_format,max_chunk_bytes,recommended_chunk_bytes}}`. Send `Authorization: Bearer <device token>` on the WSS upgrade, never a URL query. The database stores only its hash. Another owner cannot claim or rotate the singleton `demo` device. The synthetic probe claim has been removed; provision the real owner's credential privately.
+Fixed endpoint: **wss://pink-hack.vercel.app/api/v1/device/audio**. Call `POST /api/v1/device/provision {}` without an app token or cookie. It provisions the private device transport credential for `demo-user`. It returns `{device_id,credential_revision,token,audio_path,audio:{type,rate,channels,sample_format,max_chunk_bytes,recommended_chunk_bytes}}`. Send `Authorization: Bearer <device token>` on the WSS upgrade, never a URL query. The database stores only its hash. The singleton `demo` device is bound to the fixed owner. A repeat provisioning call rotates its transport credential. Keep that response private; provisioning is not an account flow.
 
 Binary audio is fixed mono signed PCM16LE at 16,000 Hz. Recommended chunk is 1,024 bytes/32 ms; maximum is 2,048 even bytes. Pace capture in real time. Each direction has a 64,000-byte queue limit.
 
@@ -66,10 +68,15 @@ Live has no documented PTT commit/output-cancel event. Turn end appends one seco
 
 ## Verification and operation
 
-On 2026-10-24 deployment `dpl_Ak43VzrcBBiwjuD27reY4y6e4WNF` was READY and aliased to the fixed host. External health returned 200; unauthenticated API and WSS upgrade returned 401. Authenticated HTTP tests passed identity, exact localhost:8080 CORS, direct Turso Journal create/reload/PATCH, unchanged creation metadata, exact retries, changed-payload conflicts and stale revisions.
+Latest fixed-owner deployment `dpl_DPC2xZNK5MY8tVpVcWELTqs5SHKy` is READY at the fixed Vercel origin. Requests without cookies or tokens passed context (`profile.owner_id: "demo-user"`), direct Journal POST/PATCH/reload, exact replay, changed-payload and stale-revision conflicts. Owner fields were rejected and forged old-user headers could not read foreign legacy records. Removed account routes returned 404. No-account provisioning and private-device-token native WSS open/stop passed, with zero provider requests. New synthetic smoke records/credential were conditionally removed; no legacy rows were deleted.
+
+The fixed-owner cutover made no schema changes. A private pre-cutover snapshot was captured, the fixed user was seeded idempotently, existing row counts were preserved and foreign-key checks passed. No device existed at cutover. Existing device credentials, when present, can be rebound to the fixed owner without rotating their token; old user-owned journal/context records are retained separately. The 51-test suite, workspace type checks and build pass after Better Auth removal.
+
+
+Historical pre-simplification evidence: on 2026-10-24 deployment `dpl_Ak43VzrcBBiwjuD27reY4y6e4WNF` was READY and aliased to the fixed host. External health returned 200; unAPI and WSS upgrade returned 401. Authenticated HTTP tests passed identity, exact localhost:8080 CORS, direct Turso Journal create/reload/PATCH, unchanged creation metadata, exact retries, changed-payload conflicts and stale revisions.
 
 One authenticated in-service device test used synthetic speech, not hardware. Azure Live accepted 16 kHz startup. The relay sent 132,200 PCM input bytes, received 256,000 output bytes, and returned a verified saved event. Owned HTTP reread confirmed `source:"atech"`, the exact revision, original heard garden wording and matching BlockNote content. No errors occurred. The synthetic device credential/claim was conditionally removed afterward. This establishes deployed bidirectional PCM and one PTT/direct-write path, not Arduino capture/playback or a full Lovable browser voice conversation.
 
-51 tests pass, alongside type checking and build. Tests include direct/legacy storage, ownership, rollback/replay, agent failures and bounded calls, real local WS with synthetic provider, generation flush, durable multi-client lease and authenticated HTTP. Turso migration had a private pre-migration backup; legacy row counts were preserved and `foreign_key_check` was empty. No new database was provisioned.
+51 tests pass, alongside type checking and build. Tests include direct/legacy storage, ownership, rollback/replay, agent failures and bounded calls, real local WS with synthetic provider, generation flush, durable multi-client lease and fixed-owner HTTP without cookies/tokens. Turso migration had a private pre-migration backup; legacy row counts were preserved and `foreign_key_check` was empty. No new database was provisioned.
 
 For source deployment, use `vercel deploy --prod --yes --scope quasr` from repository root. `.vercelignore` excludes private env files, local databases and probe artifacts. Production migrations are controlled maintenance, never per request. After building, `node backend/scripts/run-server.mjs migrate` loads server/root env privately and runs committed SQL plus idempotent legacy conversion. `dev` and `start` use the same launcher. Local SQLite remains a test option only. The superseded Azure VM was deallocated; its earlier deployment is not the active API.

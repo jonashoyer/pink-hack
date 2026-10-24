@@ -1,3 +1,5 @@
+// Legacy user/session/account tables retained for existing data and foreign keys.
+// No authentication runtime or account routes use them in the fixed-user demo.
 import { defineRelationsPart, sql } from "drizzle-orm";
 import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 

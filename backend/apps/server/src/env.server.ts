@@ -3,7 +3,6 @@ import { z } from "zod";
 // requiring a filesystem dotenv file in a deployed function bundle.
 const schema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
-  BETTER_AUTH_SECRET: z.string().min(32), BETTER_AUTH_URL: z.string().url(),
   CORS_ORIGIN: z.string().url(), CORS_ORIGINS: z.string().optional(),
   DATABASE_URL: z.string().min(1), DATABASE_API_KEY: z.string().optional(), DATABASE_AUTH_TOKEN: z.string().optional(),
   AZURE_OPENAI_API_KEY: z.string().optional(), AZURE_OPENAI_ENDPOINT: z.string().optional(), AZURE_OPENAI_REALTIME_DEPLOYMENT: z.string().optional(),

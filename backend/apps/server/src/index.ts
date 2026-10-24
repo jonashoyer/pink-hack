@@ -1,7 +1,7 @@
 import { getRequestListener, serve } from "@hono/node-server";
 import { createApp } from "./app";
 import { ENV } from "./env.server";
-import { auth, db } from "./services";
+import { db } from "./services";
 import { createServer, type Server } from "node:http";
 import { attachDeviceAudio } from "./device/ingress";
 import { createVoiceConversation, readVoiceConversation } from "./domain/journal";
@@ -10,7 +10,7 @@ import { runJournalAgent } from "./voice/agent";
 import { conversationInstructions } from "./voice/prompts";
 import { deviceMessages } from "./voice/transcripts";
 
-const app = createApp(db, auth, ENV);
+const app = createApp(db, ENV);
 const server = process.env.VERCEL === "1" ? createServer(getRequestListener(app.fetch)) : serve({ fetch: app.fetch, port: ENV.PORT }, (info) => {
   console.log(`Pink Hack backend listening on http://localhost:${info.port}`);
 });

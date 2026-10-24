@@ -9,7 +9,7 @@ type Env = { Variables: { userId: string } };
 export function createAssistantRoutes(db: Database, config: JournalAgentConfig): Hono<Env> {
   const app = new Hono<Env>();
   app.use("*", async (c, next) => {
-    if (!c.get("userId")) throw new DomainError(401, "unauthenticated", "Sign in to continue.");
+    if (!c.get("userId")) throw new DomainError(401, "unauthenticated", "The server owner context is required.");
     await next();
   });
   app.use("*", bodyLimit({ maxSize: 128 * 1024, onError: () => { throw new DomainError(413, "body_too_large", "Assistant request exceeds 128 KiB."); } }));

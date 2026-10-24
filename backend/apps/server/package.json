@@ -10,14 +10,11 @@
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.mjs",
     "migrate:runtime": "node dist/migrate.mjs",
-    "env:generate": "varlock codegen",
-    "auth:generate": "varlock run -- pnpm dlx auth@latest generate --config src/services.ts --output ../../packages/db/src/schema/auth.ts --yes"
+    "env:generate": "varlock codegen"
   },
   "dependencies": {
-    "@backend/auth": "workspace:*",
     "@backend/db": "workspace:*",
     "@hono/node-server": "^2.1.1",
-    "better-auth": "catalog:",
     "drizzle-orm": "catalog:",
     "hono": "^4.13.7",
     "libsql": "catalog:",

@@ -9,7 +9,7 @@ const env = { ...process.env };
 for (const location of [new URL("../apps/server/.env", import.meta.url), new URL("../../.env", import.meta.url)]) {
   try {
     const local = parseEnv(await readFile(location, "utf8"));
-    for (const key of ["NODE_ENV", "BETTER_AUTH_SECRET", "BETTER_AUTH_URL", "CORS_ORIGIN", "CORS_ORIGINS", "PORT", "DATABASE_URL", "DATABASE_API_KEY", "DATABASE_AUTH_TOKEN", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_REALTIME_DEPLOYMENT"]) {
+    for (const key of ["NODE_ENV", "CORS_ORIGIN", "CORS_ORIGINS", "PORT", "DATABASE_URL", "DATABASE_API_KEY", "DATABASE_AUTH_TOKEN", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_REALTIME_DEPLOYMENT"]) {
       if (local[key]?.trim()) env[key] = local[key];
     }
   } catch (error) {

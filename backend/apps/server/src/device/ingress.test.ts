@@ -1,3 +1,4 @@
+import { DEMO_USER_ID } from "../demo-owner";
 import assert from "node:assert/strict";
 import { EventEmitter, once } from "node:events";
 import { createServer } from "node:http";
@@ -55,7 +56,7 @@ async function database() {
       await db.run(sql.raw(`CREATE ${i.unique ? "UNIQUE " : ""}INDEX ${q(i.name)} ON ${q(t.name)} (${i.columns.map((c) => is(c, SQL) ? render(c) : q(c.name)).join(",")})${i.where ? ` WHERE ${render(i.where)}` : ""}`));
     }
   }
-  await db.insert(user).values([{ id: "alice", name: "Synthetic Alice", email: "alice@example.test" }, { id: "bob", name: "Synthetic Bob", email: "bob@example.test" }]);
+  await db.insert(user).values([{ id: DEMO_USER_ID, name: "Synthetic Alice", email: "alice@example.test" }, { id: "bob", name: "Synthetic Bob", email: "bob@example.test" }]);
   return { db, config, close: async () => { db.$client.close(); await rm(dir, { recursive: true, force: true }); } };
 }
 
@@ -89,7 +90,7 @@ function application(overrides: Partial<DeviceApplication> = {}): DeviceApplicat
 }
 async function fixture(overrides: Partial<DeviceApplication> = {}) {
   const storage = await database();
-  const credential = await provisionDevice(storage.db, "alice");
+  const credential = await provisionDevice(storage.db, DEMO_USER_ID);
   const providers: FakeProvider[] = [];
   const server = createServer((_req, res) => { res.writeHead(404); res.end(); });
   const app = application(overrides);
@@ -120,24 +121,24 @@ async function fixture(overrides: Partial<DeviceApplication> = {}) {
 test("provisioning stores only a hash, survives DB reopen, prevents claim, and rotates only its owner", async () => {
   const f = await database();
   try {
-    const provisioned = await provisionDevice(f.db, "alice");
+    const provisioned = await provisionDevice(f.db, DEMO_USER_ID);
     const [stored] = await f.db.select().from(devices);
     assert.equal(stored!.token_hash, hashDeviceToken(provisioned.token));
     assert.equal(JSON.stringify(stored).includes(provisioned.token), false);
     const reopened = createDb(f.config);
-    try { assert.equal((await authenticateDevice(reopened, `Bearer ${provisioned.token}`)).owner_id, "alice"); } finally { reopened.$client.close(); }
+    try { assert.equal((await authenticateDevice(reopened, `Bearer ${provisioned.token}`)).owner_id, DEMO_USER_ID); } finally { reopened.$client.close(); }
     await assert.rejects(provisionDevice(f.db, "bob"), (e: unknown) => e instanceof DomainError && e.code === "device_already_owned");
-    const rotated = await provisionDevice(f.db, "alice");
+    const rotated = await provisionDevice(f.db, DEMO_USER_ID);
     assert.equal(rotated.credential_revision, 2);
     await assert.rejects(authenticateDevice(f.db, `Bearer ${provisioned.token}`));
-    assert.equal((await authenticateDevice(f.db, `Bearer ${rotated.token}`)).owner_id, "alice");
+    assert.equal((await authenticateDevice(f.db, `Bearer ${rotated.token}`)).owner_id, DEMO_USER_ID);
     await assert.rejects(f.db.insert(devices).values({ id: "other", owner_id: "bob", token_hash: "synthetic-other-hash", created_at: "now", updated_at: "now" }));
     const app = new Hono<{ Variables: { userId: string } }>();
     app.onError((error, c) => c.json({ code: error instanceof DomainError ? error.code : "failed" }, 401));
     app.route("/api/v1", createDeviceRoutes(f.db));
     assert.equal((await app.request("/api/v1/device/provision", { method: "POST" })).status, 401);
     const owner = new Hono<{ Variables: { userId: string } }>();
-    owner.use("*", async (c, next) => { c.set("userId", "alice"); await next(); });
+    owner.use("*", async (c, next) => { c.set("userId", DEMO_USER_ID); await next(); });
     owner.route("/api/v1", createDeviceRoutes(f.db));
     const response = await owner.request("/api/v1/device/provision", { method: "POST", body: "{}" });
     assert.equal(response.headers.get("cache-control"), "no-store");
@@ -162,7 +163,7 @@ test("upgrades require header credentials before acceptance and admit only one a
     const first = await f.connect();
     assert.equal(await rejected(f.url, f.credential.token), 409);
     const closed = once(first.ws, "close");
-    await provisionDevice(f.db, "alice"); await closed;
+    await provisionDevice(f.db, DEMO_USER_ID); await closed;
     assert.ok(first.frames.some((x) => x.json?.code === "device_credential_rotated"));
   } finally { await f.close(); }
 });
@@ -237,13 +238,13 @@ test("direct delegation writes and updates journals without staged records; veri
     const saved = client.frames.find((x) => x.json?.type === "saved")!.json;
     assert.equal(saved.voice_session_id, voiceSessionId);
     assert.equal(saved.revision, 1);
-    assert.equal((await getJournalEntry(f.db, "alice", saved.entry_id)).voice_conversation_id, voiceSessionId);
+    assert.equal((await getJournalEntry(f.db, DEMO_USER_ID, saved.entry_id)).voice_conversation_id, voiceSessionId);
     assert.equal((await f.db.select().from(journalTables.checkinSessions)).length, 0);
     assert.equal((await f.db.select().from(journalTables.journalDocuments)).length, 1);
     f.providers[0]!.event({ type: "session.delegation.created", delegation: { id: "update-entry", target: "client" } });
     await until(() => client.frames.filter((x) => x.json?.type === "saved").length === 2);
     assert.equal(client.frames.filter((x) => x.json?.type === "saved")[1]!.json.revision, 2);
-    assert.equal((await getJournalEntry(f.db, "alice", saved.entry_id)).title, "Updated direct note");
+    assert.equal((await getJournalEntry(f.db, DEMO_USER_ID, saved.entry_id)).title, "Updated direct note");
     f.providers[0]!.event({ type: "session.delegation.created", delegation: { id: "update-replay", target: "client" } });
     await until(() => f.providers[0]!.sent.filter((x) => x.type === "session.commentary.append").length === 3);
     assert.equal(client.frames.filter((x) => x.json?.type === "saved").length, 2);
@@ -254,7 +255,7 @@ test("direct delegation writes and updates journals without staged records; veri
     client.ws.send(Buffer.alloc(1024));
     await until(() => f.providers[0]!.sent.some((x) => x.type === "session.input_audio.append"));
     const closed = once(client.ws, "close"); client.send({ type: "cancel" }); await closed;
-    assert.equal((await getJournalEntry(f.db, "alice", saved.entry_id)).revision, 2);
+    assert.equal((await getJournalEntry(f.db, DEMO_USER_ID, saved.entry_id)).revision, 2);
   } finally { await f.close(); }
 });
 
@@ -272,7 +273,7 @@ test("unpersisted, foreign and stale save claims emit no saved event or spoken s
     result = { text: "Foreign success", entries: [{ id: foreign.id, revision: 1 }] };
     invoke("foreign-claim");
     await until(() => client.frames.filter((x) => x.json?.code === "not_found").length === 2);
-    const owned = await createJournalEntry(f.db, "alice", { ...draft, operation_id: "owned-entry" });
+    const owned = await createJournalEntry(f.db, DEMO_USER_ID, { ...draft, operation_id: "owned-entry" });
     result = { text: "Stale success", entries: [{ id: owned.id, revision: 8 }] };
     invoke("stale-claim");
     await until(() => client.frames.some((x) => x.json?.code === "device_save_revision_changed"));
@@ -284,15 +285,15 @@ test("unpersisted, foreign and stale save claims emit no saved event or spoken s
 test("stop and network disconnect retain the owned conversation for ID resume; target cannot be spoofed", async () => {
   const f = await fixture();
   try {
-    const entry = await createJournalEntry(f.db, "alice", { ...draft, operation_id: "target-entry" });
+    const entry = await createJournalEntry(f.db, DEMO_USER_ID, { ...draft, operation_id: "target-entry" });
     const first = await f.connect(); first.send({ type: "start", operation_id: "capture-stop", entry_id: entry.id });
     await until(() => first.frames.some((x) => x.json?.state === "listening"));
     const id = first.frames.find((x) => x.json?.state === "listening")!.json.voice_session_id;
-    assert.equal((await readVoiceConversation(f.db, "alice", id)).target_entry_id, entry.id);
+    assert.equal((await readVoiceConversation(f.db, DEMO_USER_ID, id)).target_entry_id, entry.id);
     const closed = once(first.ws, "close"); first.send({ type: "stop" }); await closed;
     assert.ok(first.frames.some((x) => x.json?.type === "flush"));
     assert.ok(f.providers[0]!.sent.some((e) => e.type === "session.close"));
-    assert.equal((await readVoiceConversation(f.db, "alice", id)).state, "active");
+    assert.equal((await readVoiceConversation(f.db, DEMO_USER_ID, id)).state, "active");
     await delay(20);
     const second = await f.connect(); second.send({ type: "start", voice_session_id: id, operation_id: "resume-stop" });
     await until(() => second.frames.some((x) => x.json?.state === "listening"));
@@ -302,14 +303,14 @@ test("stop and network disconnect retain the owned conversation for ID resume; t
     await until(() => third.frames.some((x) => x.json?.code === "invalid_device_control"));
     third.send({ type: "start", voice_session_id: id, operation_id: "resume-network" });
     await until(() => third.frames.some((x) => x.json?.state === "listening"));
-    assert.equal((await listJournal(f.db, "alice")).entries.length, 1);
+    assert.equal((await listJournal(f.db, DEMO_USER_ID)).entries.length, 1);
   } finally { await f.close(); }
 });
 
 test("foreign and app-source conversations are inaccessible to the device", async () => {
   const f = await fixture();
   try {
-    const appConversation = await createVoiceConversation(f.db, "alice", { source: "app", operation_id: "app-conversation" });
+    const appConversation = await createVoiceConversation(f.db, DEMO_USER_ID, { source: "app", operation_id: "app-conversation" });
     const foreign = await createVoiceConversation(f.db, "bob", { source: "app", operation_id: "foreign-conversation" });
     const client = await f.connect();
     client.send({ type: "start", voice_session_id: foreign.id, operation_id: "foreign-resume" });
@@ -324,12 +325,12 @@ test("durable device lease excludes another DB client, checks rotation, expires 
   const f = await database();
   const peer = createDb(f.config);
   try {
-    const credential = await provisionDevice(f.db, "alice");
+    const credential = await provisionDevice(f.db, DEMO_USER_ID);
     const device = await authenticateDevice(f.db, `Bearer ${credential.token}`);
     const first = await claimDeviceLease(f.db, device);
     await assert.rejects(claimDeviceLease(peer, device), (e: unknown) => e instanceof DomainError && e.code === "device_session_active");
     assert.equal(await renewDeviceLease(peer, first), true);
-    await provisionDevice(peer, "alice");
+    await provisionDevice(peer, DEMO_USER_ID);
     assert.equal(await renewDeviceLease(f.db, first), false);
     const [rotated] = await peer.select().from(devices);
     await assert.rejects(claimDeviceLease(peer, rotated!));

@@ -7,7 +7,7 @@ type Env = { Variables: { userId: string } };
 export function createDeviceRoutes(db: Database): Hono<Env> {
   const app = new Hono<Env>();
   app.post("/device/provision", async (c) => {
-    if (!c.get("userId")) throw new DomainError(401, "unauthenticated", "Sign in to provision the demo device.");
+    if (!c.get("userId")) throw new DomainError(401, "unauthenticated", "The server demo owner is required.");
     // Provisioning accepts no owner, device ID or client-generated credential.
     const raw = await c.req.text();
     if (Buffer.byteLength(raw) > 1024) throw new DomainError(422, "invalid_input", "Provisioning accepts an empty JSON object.");

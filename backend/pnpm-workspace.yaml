@@ -7,7 +7,6 @@ allowBuilds:
 
 catalog:
   '@types/node': ^26.4.1
-  better-auth: 1.7.10
   drizzle-orm: 1.0.0-rc.4
   libsql: 0.5.29
   typescript: ^6.0.3

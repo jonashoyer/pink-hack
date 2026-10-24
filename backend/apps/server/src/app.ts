@@ -1,5 +1,5 @@
 import type { Database } from "@backend/db";
-import type { createAuth } from "@backend/auth";
+import { DEMO_API_ORIGIN, DEMO_USER_ID, ensureDemoOwner } from "./demo-owner";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { cors } from "hono/cors";
@@ -11,13 +11,12 @@ import { createVoiceRoutes, type VoiceConfig } from "./routes/voice";
 import { createAssistantRoutes } from "./routes/assistant";
 import { createDeviceRoutes } from "./routes/device";
 
-type Auth = ReturnType<typeof createAuth>;
-type AppConfig = VoiceConfig & { ANTHROPIC_API_KEY?: string; CORS_ORIGIN: string; CORS_ORIGINS?: string; BETTER_AUTH_URL: string };
+type AppConfig = VoiceConfig & { ANTHROPIC_API_KEY?: string; CORS_ORIGIN: string; CORS_ORIGINS?: string };
 type Variables = { userId: string; requestId: string };
 
-export function createApp(db: Database, auth: Auth, config: AppConfig, providerFetch: typeof fetch = fetch) {
+export function createApp(db: Database, config: AppConfig, providerFetch: typeof fetch = fetch) {
   const app = new Hono<{ Variables: Variables }>();
-  const origins = [...new Set([config.CORS_ORIGIN, new URL(config.BETTER_AUTH_URL).origin, ...(config.CORS_ORIGINS?.split(",").map((value) => value.trim()).filter(Boolean) ?? [])])];
+  const origins = [...new Set([config.CORS_ORIGIN, DEMO_API_ORIGIN, ...(config.CORS_ORIGINS?.split(",").map((value) => value.trim()).filter(Boolean) ?? [])])];
   for (const origin of origins) {
     const parsed = new URL(origin);
     if (!["http:", "https:"].includes(parsed.protocol) || parsed.origin !== origin) throw new Error("CORS origins must be exact HTTP origins.");
@@ -30,10 +29,9 @@ export function createApp(db: Database, auth: Auth, config: AppConfig, providerF
   });
   app.use("*", cors({
     origin: origins,
-    credentials: true,
     allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
-    allowHeaders: ["Content-Type", "Authorization"],
-    exposeHeaders: ["set-auth-token", "X-Request-Id"],
+    allowHeaders: ["Content-Type"],
+    exposeHeaders: ["X-Request-Id"],
   }));
   app.use("/api/*", bodyLimit({ maxSize: 512 * 1024, onError: () => { throw new DomainError(413, "body_too_large", "Request exceeds 512 KiB."); } }));
   // CORS governs response access, not permission to mutate records.
@@ -44,13 +42,11 @@ export function createApp(db: Database, auth: Auth, config: AppConfig, providerF
     }
     await next();
   });
-  app.on(["GET", "POST"], "/api/auth/*", (c) => auth.handler(c.req.raw));
   app.get("/health", (c) => c.json({ status: "ok", service: "pink-hack-backend" }));
   app.get("/", (c) => c.json({ service: "pink-hack-backend", health: "/health", api: "/api/v1" }));
   app.use("/api/v1/*", async (c, next) => {
-    const session = await auth.api.getSession({ headers: c.req.raw.headers });
-    if (!session) throw new DomainError(401, "unauthenticated", "Sign in to continue.");
-    c.set("userId", session.user.id);
+    await ensureDemoOwner(db);
+    c.set("userId", DEMO_USER_ID);
     await next();
   });
   app.route("/api/v1", createJournalRoutes(db));

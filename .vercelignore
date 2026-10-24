@@ -10,3 +10,9 @@
 **/*.sqlite
 **/*.sqlite-*
 .git/**
+hardware/**
+docs/**
+.agents/**
+**/.venv/**
+**/.pio/**
+**/.platformio/**

@@ -19,8 +19,7 @@
     "db:generate": "turbo run db:generate -F @backend/db --",
     "db:migrate": "turbo run db:migrate -F @backend/db --",
     "env:generate": "varlock codegen --path ./apps/server/ && varlock codegen --path ./packages/db/",
-    "postinstall": "varlock codegen --path ./apps/server/ && varlock codegen --path ./packages/db/",
-    "auth:generate": "cd apps/server && pnpm run auth:generate"
+    "postinstall": "varlock codegen --path ./apps/server/ && varlock codegen --path ./packages/db/"
   },
   "dependencies": {
     "zod": "catalog:"

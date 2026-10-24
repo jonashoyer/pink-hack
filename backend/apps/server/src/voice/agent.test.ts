@@ -305,7 +305,7 @@ test("foreign voice sessions, optional targets and entry updates reject before w
   } finally { await close(); }
 });
 
-test("assistant HTTP contract authenticates and returns only this delegation's persisted entries", async (t) => {
+test("assistant HTTP contract validates server owner context and returns only this delegation's persisted entries", async (t) => {
   const { db, close } = await setup();
   try {
     const request = await input(db);

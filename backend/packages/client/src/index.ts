@@ -3,7 +3,7 @@ export * from "./live-protocol";
 
 export type VoiceSession = { id: string; voice_session_id: string; provider: "azure" | "openai"; model: string; delegation: "client" | "responses"; session: { id: string }; transport: { type: "webrtc"; sdp: string } };
 export type VoiceOptions = {
-  apiBaseUrl: string; entryId?: string; sessionToken?: () => string | undefined;
+  apiBaseUrl: string; entryId?: string;
   onStatus: (status: "connecting" | "listening" | "closing" | "closed" | "error") => void;
   onTranscript?: (fragment: NonNullable<ReturnType<LiveTranscripts["append"]>>) => void;
   onError?: (message: string) => void;
@@ -11,7 +11,7 @@ export type VoiceOptions = {
   // use these lossy transcripts and verified backend state, honoring cancellation.
   onDelegation: (input: { delegationId: string; transcripts: { role: "user" | "assistant"; text: string }[]; voiceSessionId: string; entryId?: string; signal: AbortSignal }) => Promise<string>;
 };
-/** Call start() directly from a user action. Supply backend auth, never a provider key. */
+/** Call start() directly from a user action. No account/session token is needed; provider keys remain server-side. */
 export function createVoiceConnection(options: VoiceOptions) {
   let peer: RTCPeerConnection | undefined;
   let channel: RTCDataChannel | undefined;
@@ -33,10 +33,9 @@ export function createVoiceConnection(options: VoiceOptions) {
   const calls = new Map<string, { call_id: string; name: string; arguments: string }[]>();
   const handledCalls = new Set<string>();
   const post = async (path: string, body: unknown, signal?: AbortSignal) => {
-    const token = options.sessionToken?.();
     const response = await fetch(`${options.apiBaseUrl.replace(/\/$/, "")}/api/v1${path}`, {
-      method: "POST", credentials: "include", signal,
-      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: JSON.stringify(body),
+      method: "POST", credentials: "omit", signal,
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
     });
     const value = await response.json();
     if (!response.ok) throw new Error(value.error?.message ?? "The backend request failed.");
