@@ -30,14 +30,18 @@ export async function claimDelegation(db: Database, input: Input): Promise<{resu
     if(prior){
       if(prior.requestHash!==requestHash)throw new DomainError(409,"delegation_conflict","This delegation ID was reused with different messages or target.");
       if(prior.state==="completed"&&prior.result)return {result:prior.result};
-      if(prior.state==="failed"&&prior.error)throw new DomainError(prior.error.status,prior.error.code,prior.error.message,prior.error.retryable);
+      if(prior.state==="failed") {
+        const result=await recovered(tx,input);
+        if(result){await tx.update(agentDelegations).set({state:"completed",result,error:null,updatedAt:now()}).where(eq(agentDelegations.id,prior.id));return {result};}
+        if(!prior.error?.retryable)throw new DomainError(prior.error?.status??502,prior.error?.code??"assistant_unavailable",prior.error?.message??"The assistant could not finish.",false);
+      }
       const [expired]=await tx.select({id:agentDelegations.id}).from(agentDelegations).where(and(eq(agentDelegations.id,prior.id),lte(agentDelegations.leaseExpiresAt,agentDatabaseNow)));
-      if(!expired)throw new DomainError(409,"assistant_in_progress","This delegation is already running. Retry the same request after it finishes.",true);
+      if(prior.state==="running"&&!expired)throw new DomainError(409,"assistant_in_progress","This delegation is already running. Retry the same request after it finishes.",true);
       const result=await recovered(tx,input);
       if(result){await tx.update(agentDelegations).set({state:"completed",result,updatedAt:now()}).where(eq(agentDelegations.id,prior.id));return {result};}
     }
     const executionId=randomUUID();const timestamp=now();
-    if(prior)await tx.update(agentDelegations).set({executionId,leaseExpiresAt:sql`${agentDatabaseNow}+${leaseMs}`,updatedAt:timestamp}).where(eq(agentDelegations.id,prior.id));
+    if(prior)await tx.update(agentDelegations).set({state:"running",error:null,result:null,executionId,leaseExpiresAt:sql`${agentDatabaseNow}+${leaseMs}`,updatedAt:timestamp}).where(eq(agentDelegations.id,prior.id));
     else await tx.insert(agentDelegations).values({id:key(input),ownerId:input.ownerId,conversationId:input.voiceSessionId,delegationId:input.delegationId,requestHash,state:"running",executionId,leaseExpiresAt:sql`${agentDatabaseNow}+${leaseMs}`,createdAt:timestamp,updatedAt:timestamp});
     return {executionId};
   });

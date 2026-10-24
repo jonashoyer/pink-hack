@@ -21,7 +21,7 @@ The first build downloads the ESP32 compiler, about 2.4 GB once.
 Stop the monitor before another SDK command uses USB.
 
 Hold the button and say "Pink Hack audio test, one two three." Release to hear
-the same recording. Capture stops at two seconds. Press during playback to interrupt.
+the same recording at 40% volume. Capture stops at two seconds. Press during playback to interrupt.
 Repeat several times. Blue is idle, green recording, amber playback, red error.
 
 The monitor reports `pcm_capture` sample count, elapsed time, RMS, peak and clipping.
@@ -35,3 +35,9 @@ Keep source in `project.yaml` and `modules/`; never edit generated `build/`.
 
 Voice example: [Clawd firmware and agent](https://github.com/davidstalmarck/clawd-bot).
 Its laptop bridge is a reference, not our deployment path.
+
+Verified on 2026-10-24: SDK build/upload and boot check passed. Four physical
+button-triggered captures produced 17,408-31,744 PCM samples with zero clipped
+samples; the developer confirmed audible replay. Volume was then doubled from
+20% to 40% and flashed persistently. Physical interruption and long-run heap
+stability remain unmeasured. This is local PCM evidence, not GPT-Live/WSS voice.

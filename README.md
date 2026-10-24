@@ -12,12 +12,14 @@ Project for The Pink Hack, Build for Impact. Started from the [hckthn template](
 - [PRD](PRD.md): product requirements, app pages, guided check-in, and acceptance criteria.
 - [App structure](docs/app-structure.md): data model, shared API contracts, voice boundary, and Atech bridge ownership.
 - [API readiness](docs/api-readiness.md): documented GPT-Live contracts and current test blockers.
-- [Backend setup and API](docs/backend.md): Better-T-Stack server, authentication, journal storage, and Lovable/Atech handoff.
+- [Backend setup and API](docs/backend.md): Hono/Node server, fixed-user Journal storage, and Lovable/Atech handoff.
 - [Status](status.md): evidence, deadlines, and integration blockers.
 
 ## Get started
 
-The backend is in `backend/`; Lovable is the separate frontend. To start the local API:
+The backend is in `backend/`; Lovable is the separate frontend. The demo uses the server-owned `demo-user` for every visitor and Atech, without Better Auth, accounts, sign-in, or user-session tokens. The fixed-user API is deployed at `https://pink-hack.vercel.app`; the sole Lovable writer is applying the no-login UI revision. Revision checks, retry protection, and backend-only provider/database credentials remain.
+
+To start the local API:
 
 ```sh
 pnpm -C backend install

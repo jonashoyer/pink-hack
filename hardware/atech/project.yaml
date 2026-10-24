@@ -8,7 +8,7 @@ modules:
   - {id: neopixel, instance: led, port: 4}
 code:
   setup: |
-    spk.setVolume(0.2f);
+    spk.setVolume(0.4f);
     led.setBrightness(20);
     led.setAll(0, 0, 160); led.show();
   loop: |
@@ -19,7 +19,7 @@ code:
     bool released = btn.wasReleased();
     auto status = [&](const char* text, int r, int g, int b) {
       led.setAll(r, g, b); led.show();
-      Serial.printf("{\"type\":\"event\",\"payload\":{\"event_type\":\"state\",\"key\":\"pcm_state\",\"value\":\"%s\",\"free_heap\":%u}}\n", text, ESP.getFreeHeap());
+      Serial.printf("{\"type\":\"event\",\"payload\":{\"event_type\":\"state\",\"key\":\"pcm_state\",\"value\":{\"state\":\"%s\",\"free_heap\":%lu}}}\n", text, (unsigned long)ESP.getFreeHeap());
     };
     bool request = pressed;
     if (atech_action == "pcm_record") {

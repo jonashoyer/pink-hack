@@ -31,7 +31,7 @@ type ToolResult = { type: "tool_result"; tool_use_id: string; content: string };
 type Message = { role: "user" | "assistant"; content: string | (Block | ToolResult)[] };
 const unavailable = () => new DomainError(502, "assistant_unavailable", "The assistant could not finish. Please try again.", true);
 function checkAbort(signal: AbortSignal) {
-  if (signal.aborted) throw new DomainError(408, "assistant_aborted", "The assistant request was canceled or timed out.");
+  if (signal.aborted) throw new DomainError(408, "assistant_aborted", "The assistant request was canceled or timed out.", signal.reason?.name === "TimeoutError");
 }
 function boundedJson(value: unknown) {
   const result = JSON.stringify(value);

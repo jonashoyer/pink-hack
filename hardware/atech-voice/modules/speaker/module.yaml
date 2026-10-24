@@ -1,0 +1,29 @@
+id: speaker
+name: "MAX98357A bounded voice speaker"
+category: audio
+interface: gpio
+size: 2
+description: "SDK I2S pin mapping with a task-owned 32 KiB PCM queue and ordered DMA flush barrier."
+driver:
+  header: speaker.h
+  source: speaker.cpp
+  class_name: Speaker
+templates:
+  globals: |
+    Speaker {{ instance }}({{ pin_b }}, {{ pin_a }}, {{ pin_b2 }});
+  setup: |
+    {{ instance }}.begin();
+    {{ instance }}.setVolume(0.4f);
+  loop: ""
+events: []
+actions:
+  - key: "{{ instance }}_set_volume"
+    value_type: float
+    description: "PCM output volume 0..1; preferred 0.4."
+    handler: |
+      {{ instance }}.setVolume(constrain(value.toFloat(), 0.0f, 1.0f));
+lib_deps: []
+usage: |
+  // enqueuePCM(bytes, count) copies <=2048 even PCM16LE bytes without blocking.
+  // stop() clears queued, task-local, and inflight DMA audio before returning.
+  // isPlaying() includes conservative physical DMA drain time; no provider done event.

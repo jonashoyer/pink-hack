@@ -32,7 +32,12 @@ The example was source-inspected; its authors do not establish hardware audio ac
 
 The published SDK provides USB serial transport only. Direct WiFi/WSS needs firmware
 adaptation; use the verified single Vercel backend at `https://pink-hack.vercel.app`,
-existing Turso storage and Azure Live provider. Journal writes are direct user-requested
-creates/updates, without a staged review/confirmation workflow. Keep credentials private.
+existing Turso storage and Azure Live provider. App and device share one fixed
+server-owned demo user; no sign-in or account-session token is required. Device
+transport retains its private Bearer credential bound to `demo-user`. Provision it
+privately through `POST https://pink-hack.vercel.app/api/v1/device/provision {}`;
+no cookie or account token is needed. WSS is `wss://pink-hack.vercel.app/api/v1/device/audio`.
+Never print the returned device token or put it in a URL. Journal writes are direct user-requested
+creates/updates, without staged review/confirmation.
 
 Sources: [Atech SDK reference](https://atech.dev/llms.txt), [SDK on PyPI](https://pypi.org/project/atech/1.0.0a11/).

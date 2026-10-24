@@ -1,0 +1,28 @@
+id: microphone
+name: "ICS-43434 continuous voice microphone"
+category: audio
+interface: gpio
+size: 2
+description: "SDK microphone pin mapping with a bounded, consuming PCM16 stream; no serial raw-audio actions. Native WiFi/WSS support files travel with this override."
+driver:
+  header: microphone.h
+  source: microphone.cpp
+  class_name: Microphone
+templates:
+  globals: |
+    #include "voice_transport.h"
+    Microphone {{ instance }}({{ pin_a }}, {{ pin_b }}, {{ pin_a2 }}, {{ pin_b2 }});
+  setup: |
+    {{ instance }}.begin();
+  loop: ""
+events: []
+actions: []
+lib_deps:
+  - "links2004/WebSockets@2.7.2"
+  - "bblanchon/ArduinoJson@6.21.5"
+  - "tzapu/WiFiManager@2.0.17"
+usage: |
+  // startStream() starts fresh capture; endStream() freezes but retains unread PCM.
+  // readStream() consumes samples exactly once, including after endStream().
+  // stopStream() discards unread PCM. streamOverruns() counts lost samples.
+  // Only VoiceTransport controls the stream. No recording/export API is present.

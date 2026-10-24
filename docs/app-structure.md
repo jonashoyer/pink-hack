@@ -4,19 +4,21 @@ provenance: "Unvetted Synthetic"
 
 # Simple page and Journal API
 
-This follows [the latest PRD](../PRD.md) and [coordinator correction](flexible-pages-journal.md). The active product has custom pages, one Journal, and direct agent writes. There is no stored proposal or required check-in/draft/confirm/commit sequence. [backend.md](backend.md) remains the record of actual implementation evidence.
+This follows [the latest PRD](../PRD.md) and [coordinator correction](flexible-pages-journal.md). The active product has custom pages, one Journal, direct agent writes, and one fixed server-owned demo user. Better Auth, accounts, and user-session tokens are removed from the requested flow. There is no stored proposal or required check-in/draft/confirm/commit sequence. [backend.md](backend.md) remains the record of actual implementation evidence.
 
 ## Runtime and ownership
 
-Keep the existing Hono/Node, Better Auth, Drizzle/libSQL backend. The backend owner handles source, runtime, migrations, and deployment in the existing [Vercel project](https://vercel.com/quasr/pink-hack). The existing Turso database is the sole deployed store; do not provision another database service/container.
+Keep the existing Hono/Node and Drizzle/libSQL backend, removing Better Auth runtime/dependencies and required authentication environment settings. The backend owner handles source, runtime, migrations, and deployment in the existing [Vercel project](https://vercel.com/quasr/pink-hack). The existing Turso database is the sole deployed store; do not provision another database service/container.
+
+All application operations use `DEMO_USER_ID = "demo-user"`, exported from `backend/apps/server/src/demo-owner.ts`. Initialize its existing user-table row idempotently for foreign-key compatibility without deleting legacy users, sessions, or records. Clients cannot select an owner. All browser visitors and the device share this demo user's pages and Journal; this is an expedient demo configuration, not personal multi-user storage.
 
 Load root `.env` `DATABASE_URL` and `DATABASE_API_KEY` privately and verify their mapping to libSQL authentication. Provider keys also stay server-side. Local SQLite checks are separate from Turso persistence evidence.
 
-The sole Lovable writer owns the canonical testing frontend. It consumes the verified fixed backend `https://pink-hack.vercel.app` with Better Auth session credentials. The backend owner verified both `http://localhost:8080` and the canonical public Lovable preview origin in CORS and trusted authentication. No database/provider credentials go into the browser. Remove previous Azure hosting origins. Azure GPT-Live is the voice provider, not the app host.
+The sole Lovable writer owns the canonical testing frontend. It consumes fixed backend `https://pink-hack.vercel.app` with plain JSON requests and no user-session credentials or owner IDs. Keep exact CORS origins for `http://localhost:8080` and the canonical public Lovable preview. No database/provider credentials go into the browser. Remove previous Azure hosting origins. Azure GPT-Live is the voice provider, not the app host.
 
 The same deployed Vercel service's authenticated device WSS relay is verified at `wss://pink-hack.vercel.app/api/v1/device/audio`. The backend owner exercised real Azure Live with synthetic PCM speech and verified the saved Journal entry through owned HTTP reread. This is evidence for this deployment, not Arduino capture/playback or Lovable browser voice. The device function has a 300-second lifetime; reconnect behavior has not been runtime exercised.
 
-The backend contract is complete and frozen for integration. The Atech owner is physically testing the confirmed Big Kit 14-port layout: microphone 1-2, speaker 13-14, button 3, light grid 4. The installed SDK is `atech==1.0.0a11`; its USB serial defaults still need firmware adaptation for direct device WSS. The sole frontend writer owns canonical Jonas integration and browser WebRTC acceptance. Neither runtime check is established by the synthetic backend test.
+The fixed-user backend is deployed and its no-user-token contract is verified. The Atech owner is physically testing the confirmed Big Kit 14-port layout: microphone 1-2, speaker 13-14, button 3, light grid 4. The installed SDK is `atech==1.0.0a11`; its USB serial defaults still need firmware adaptation for direct device WSS. The sole frontend writer owns canonical Jonas no-login integration and browser WebRTC acceptance. Neither runtime check is established by the previous synthetic backend test.
 
 ## Frontend and records
 
@@ -27,7 +29,7 @@ The sidebar contains custom page titles, Add page, and Journal. The selected pag
 | Page | `id,title,content,revision,created_at,updated_at` |
 | JournalEntry | `id,title,content,properties,original_text,journal_date,source,context_revisions,revision,created_at,updated_at`, creation operation metadata |
 | VoiceSession | Owned session identity, provider session metadata, optional current entry reference; no held journal document |
-| Auth/device | Existing account and authenticated device metadata where supported |
+| Fixed user/device | Fixed demo-user row and device credential metadata; legacy account tables are preserved without an authentication runtime |
 
 `content` is native BlockNote block JSON, limited to 200,000 serialized bytes, 8 nesting levels, and 1,000 blocks. Preserve styles, nested blocks, and unrelated content.
 
@@ -35,11 +37,11 @@ The sidebar contains custom page titles, Add page, and Journal. The selected pag
 
 ## Direct REST contract
 
-All `/api/v1` routes authenticate the person or bound device. The backend derives the owner; no request body selects another user. Responses are direct records unless a wrapper is shown.
+Application `/api/v1` routes use the fixed demo user without sign-in, session cookies, or bearer user tokens. Device WSS retains its existing transport credential bound to that user. The backend supplies the owner; no request body or header selects another user. Removed `/api/auth/*` routes are not part of the app contract. Responses are direct records unless a wrapper is shown.
 
 | Method and route | Input | Result |
 | --- | --- | --- |
-| `GET /api/v1/context` | Authenticated owner | `{profile,pages}`, all live owned pages and revisions |
+| `GET /api/v1/context` | No credentials or owner selector | `{profile,pages}`, all live fixed-user pages and revisions |
 | `GET /api/v1/pages` | Optional cursor | `{pages,next_cursor}` |
 | `GET /api/v1/pages/:id` | Page ID | Page |
 | `POST /api/v1/pages` | `title,content,operation_id` | Page |
@@ -58,7 +60,7 @@ Journal creation operation metadata remains immutable provenance. A PATCH reques
 
 ## Voice agent
 
-The agent reads context and current entries, then calls `create_journal_entry` or `update_journal_entry` directly in response to user writing requests. Tools use the same authenticated services as POST/PATCH. The backend validates ownership, blocks/properties, expected revisions, and stable action/retry IDs.
+The agent reads context and current entries, then calls `create_journal_entry` or `update_journal_entry` directly in response to user writing requests. Tools use the same fixed-user services as POST/PATCH. The backend validates record scope, blocks/properties, expected revisions, and stable action/retry IDs.
 
 There is no required prepare/confirm/commit tool chain, receipt minting, held proposal record, or separate review screen. The agent asks a normal conversational clarification if intent or the target entry is unclear. Stored page text is context, not permission to run commands.
 
@@ -72,21 +74,25 @@ The current application callback is `POST /api/v1/voice/sessions/:id/agent` with
 
 Azure client delegation provides metadata and lossy transcript fragments, not task text. Use current backend state, bounded/merged messages, and cancellation. The agent callback does not require a stored journal draft or check-in identity.
 
-## Reusable client and auth
+## Reusable client
 
 `@backend/client` is private workspace code, not assumed published. The sole frontend writer can copy/adapt its two framework-independent source modules into remote `src/lib/voice/`, preserving relative imports and reporting changes to the backend owner.
 
 The updated `createVoiceConnection` uses optional `entryId` and supplies `voiceSessionId`, optional `entryId`, `delegationId`, transcripts, and an abort signal to `onDelegation`, without creating a check-in. Copy the latest upstream modules rather than the earlier check-in version. Call start from a user action and close on stop/unmount. Validate the exact provider session/model before enabling audio and report graceful-close confirmation accurately.
 
-Better Auth sign-up/sign-in uses `/api/auth/*`. Use session cookies or an in-memory bearer token. Verify identity independently of context retrieval so an oversized context cannot prevent the user managing their pages.
+Remove sign-up/sign-in/logout UI, account state, session-token callbacks, Authorization headers, and cookie credentials from application requests. Open directly into pages and Journal using the fixed API origin. Context limits must not prevent managing the saved pages. The voice client uses the same no-user-auth requests; device transport credentials remain a separate backend/device concern.
 
 ## Storage transition and checks
 
 Keep legacy check-in, draft, and receipt data/routes only as compatibility while the owner transitions active clients. Do not delete Turso or legacy contents to simplify the API. New journal writes use direct services and no separate proposal resource.
 
-Retain input limits and error envelope `{error:{code,message,retryable},request_id}`. Missing auth is 401, foreign-owned records 404, stale/state/operation conflicts 409, invalid input 422, and storage failure 503.
+Retain input limits and error envelope `{error:{code,message,retryable},request_id}`. Records outside the fixed demo owner's scope return 404, stale/state/operation conflicts return 409, invalid input returns 422, and storage failure returns 503. Missing or invalid device transport credentials still return 401; application requests do not require user authentication.
 
-Verify direct authenticated POST/PATCH, arbitrary properties/blocks, owner isolation, stale revisions, same-operation replay, data preservation, and retrieval across app restart on existing Turso. Then exercise the real voice callback and frontend. Earlier staged-workflow tests and Azure access-only startup do not prove this simpler path.
+Verify fresh fixed-user initialization, requests without cookies or user tokens, direct POST/PATCH, arbitrary properties/blocks, ignored/rejected owner selectors, inaccessible legacy-owner records, stale revisions, same-operation replay, data preservation, and retrieval across app restart on existing Turso. Then exercise the real voice callback and no-login frontend. Earlier authenticated-build checks do not prove this fixed-user revision.
+
+Fixed-user production is verified at `https://pink-hack.vercel.app`, deployment `dpl_DPC2xZNK5MY8tVpVcWELTqs5SHKy`, immutable host `https://pink-hack-pad6g1eaa-quasr.vercel.app`. The backend owner confirmed no-token context retrieval with `profile.owner_id:"demo-user"`, removed auth routes returning 404, owner fields rejected with 422, forged headers unable to access legacy-owner records, direct Journal POST/reload/PATCH, exact retry, changed-payload conflicts, and stale revision rejection. No-account device provision and private-Bearer WSS open/stop passed with zero provider requests. All 51 tests, workspace types, and build pass; existing Turso rows and foreign keys are preserved with no schema changes. Upstream `createVoiceConnection` is frozen with no `sessionToken` option and `credentials:"omit"`/Content-Type-only requests. The sole Lovable writer is applying the no-login revision.
+
+The fixed-user backend is committed in `e2d33ad`. Verification cleanup removed only the exact new synthetic page, journal entry, and test device claim; no legacy records were removed. Authenticated HTTP/WSS/agent-save evidence below describes the previous build. Real voice audio after this fixed-user change and physical hardware behavior remain separate checks.
 
 The backend owner reports the additive Turso migration passed with a private pre-migration backup, unchanged legacy row counts, and an empty foreign-key check. Verified production is deployment `dpl_Ak43VzrcBBiwjuD27reY4y6e4WNF`, immutable host `https://pink-hack-38g1zdff7-quasr.vercel.app`, fixed alias `https://pink-hack.vercel.app`. External health, authenticated HTTP persistence, and authenticated device WSS/PCM/agent saving passed. The synthetic speech test sent 132,200 input bytes and received 256,000 output bytes; an owned reread confirmed the actual heard garden wording and BlockNote entry at revision 1, with no errors. The synthetic singleton claim was conditionally released after the socket closed. Source `99c316c` and verification docs `4d45f10` contain the integrated direct path; 51/51 tests, workspace types, and build passed. Hardware playback, Lovable browser voice, and the 300-second runtime reconnect remain unverified. No duplicate paid startup or synthetic singleton provision is required.
 

@@ -4,7 +4,7 @@ provenance: "Unvetted Synthetic"
 
 # Pink Hack product requirements
 
-The developer's latest instruction is a simple voice-written journal. The agent writes directly to Journal; there is no stored proposal, required draft review, or separate check-in approval workflow. This supersedes the earlier staged draft/confirm/commit design. [The coordinator brief](docs/flexible-pages-journal.md) records the correction.
+The developer's latest instruction removes Better Auth and uses one fixed server-owned user ID. The app opens directly into the shared demo journal, without accounts, sign-in, cookies, or user-session tokens. Direct voice-agent writing remains: no stored proposal, required draft review, or separate check-in approval workflow. [The coordinator brief](docs/flexible-pages-journal.md) records the corrections.
 
 ## Goal
 
@@ -12,7 +12,13 @@ Build a Notion-style app with user-created context pages and one fixed Journal d
 
 The app supports people describing their own needs, including the [event's cancer-aftercare example](docs/event-context.md). Page names, questions, and journal properties are chosen from those needs rather than fixed product categories.
 
-Lovable is the frontend. The existing Hono/Node backend provides authenticated page and Journal operations. Hosting is the existing [Vercel Pink Hack project](https://vercel.com/quasr/pink-hack); the existing Turso database is the sole deployed storage. Azure `gpt-live-1` remains the voice provider. There is no Notion product integration or new database deployment.
+Lovable is the frontend. The existing Hono/Node backend provides page and Journal operations for the fixed demo user. Hosting is the existing [Vercel Pink Hack project](https://vercel.com/quasr/pink-hack); the existing Turso database is the sole deployed storage. Azure `gpt-live-1` remains the voice provider. There is no Notion product integration or new database deployment.
+
+## Fixed demo user
+
+The backend assigns every app request and device conversation to `DEMO_USER_ID = "demo-user"`, exported from `backend/apps/server/src/demo-owner.ts`. Clients do not choose or send an owner ID. Initialize the fixed user row idempotently to satisfy existing record references, and preserve legacy users and data. Existing device transport credentials remain bound to the fixed user and do not require an account or login.
+
+This is an expedient hackathon design: all visitors share the same pages and Journal. A future personal product would need separate users and access control. Keep provider/database credentials server-side, record scoping, input validation, revision checks, and retry protection in the current demo.
 
 ## App
 
@@ -24,7 +30,7 @@ The voice agent handles writing. The user can also edit pages and journal entrie
 
 ## Direct voice flow
 
-1. The user starts the assistant. The backend resolves the authenticated person and owned voice session.
+1. The user starts the assistant. The backend uses the fixed demo user and its voice conversation.
 2. The agent reads all live owned context pages and relevant journal history.
 3. It follows the conversation and the user's writing requests, creating an entry through Journal POST or updating one through Journal PATCH.
 4. The backend validates the owner, content, operation ID, and expected revision, then persists the write to Turso.
@@ -52,7 +58,7 @@ Stopping voice prevents further actions. It does not silently undo entries alrea
 - The assistant uses all live owned pages, tracking revisions and reporting context limits explicitly.
 - Journal properties accept bounded text, finite numbers, booleans, null, or lists of those values. Missing properties remain absent.
 - Day-plan edits preserve unrelated blocks and properties.
-- Every write derives the owner from authentication and validates its input.
+- Every write uses the server-owned fixed user ID and validates its input. Request bodies and headers cannot select a different owner.
 - Journal updates require the current expected revision. A stale write conflicts instead of replacing newer content.
 - A stable operation ID makes retrying a write return the original result. The same ID with changed content conflicts.
 - The agent announces successful saving only after a storage response confirms it.
@@ -65,15 +71,23 @@ Stopping voice prevents further actions. It does not silently undo entries alrea
 
 The [backend owner](t3-thread://v1/dac033a2-a1c4-48ee-a7cb-39cb86afe1a7) retains source, migration, runtime, and deployment work. The sole Lovable writer owns remote UI changes in canonical testing project `ee916e8c-7f2f-4989-9c6e-cedcff1793b5`. The coordinator owns the change brief and status; this thread owns PRD/contracts reconciliation.
 
-The backend handoff is complete, with no pending contract changes. [Backend documentation](docs/backend.md) records the implemented direct-write endpoints and verification evidence.
+The fixed-user backend is verified at `https://pink-hack.vercel.app`, deployment `dpl_DPC2xZNK5MY8tVpVcWELTqs5SHKy`. The owner confirmed no-token context retrieval, direct Journal POST/reload/PATCH, exact retry, changed-payload and stale-revision conflicts, owner-selector rejection, and removed auth routes. All 51 tests, types, and build pass. Turso data is preserved with no schema changes. Device provision needs no user account; private-token WSS open/stop passed without starting a provider session. [Backend documentation](docs/backend.md) records the details. The sole Lovable writer is applying the no-login revision.
+
+The following audio evidence describes the previous build and does not establish real voice behavior after the fixed-user cutover.
 
 Production HTTPS and authenticated WSS are verified on the same `https://pink-hack.vercel.app` service, deployment `dpl_Ak43VzrcBBiwjuD27reY4y6e4WNF`. The backend owner verified Turso direct Journal writes and a real Azure Live 16 kHz PCM roundtrip using synthetic speech: 132,200 input bytes, 256,000 output bytes, and an agent-saved `source:"atech"` entry at revision 1. Owned HTTP reread confirmed the heard synthetic garden wording and BlockNote content, with no errors. Source is integrated in `99c316c`; verification notes are committed in `4d45f10`. The owner reports 51/51 tests, workspace types, and build passing. Lovable browser voice and actual Arduino capture/playback remain runtime checks for their owners. The 300-second device-function reconnect path has not been runtime exercised.
+
+The fixed-user backend deployment and no-token persistence checks are complete at source `e2d33ad`. The backend owner removed only the exact new synthetic test records/device claim after verification and preserved legacy data. No-login Lovable integration and physical device audio remain with their existing owners.
+
+The [independent voice audit](docs/demo-validation.md#voice-blockers-reported-by-the-readiness-auditor) found that callback retries with different generated tool-call IDs can create duplicate entries, and Stop does not yet persist a stopped backend conversation. The existing backend owner is implementing the fixes. REST retry checks and provider closure do not establish those voice guarantees. No integrated demo candidate is validated yet.
+
+The [draft demo story](docs/demo-script.md) uses composite Persona 1 to illustrate context-informed journaling and a day plan. It is a scenario and product hypothesis, not patient validation or evidence of clinical outcomes. Presentation remains part of Demo and must follow the validated candidate. The same journal can support emotional writing and other needs; the selected scenario does not narrow the product.
 
 ## Acceptance
 
 Verify adding unfamiliar context pages, saving/reloading native blocks, a page-informed voice conversation that directly creates a Journal entry with unfamiliar properties, and a direct Day-plan update preserving the rest of the page.
 
-Verify foreign-user rejection, duplicate retry behavior, stale revision conflicts, failed-write feedback, and stop/interruption preventing subsequent actions. Real microphone/speaker and application-agent checks are distinct from access-only session startup.
+Verify requests without cookies or user tokens, rejection of client-supplied owner changes, inaccessible legacy-owner records, duplicate retry behavior, stale revision conflicts, failed-write feedback, and stop/interruption preventing subsequent actions. Real microphone/speaker and application-agent checks are distinct from access-only session startup.
 
 The confirmed hardware is Atech Big Kit's 14-port board, with microphone on ports 1-2, speaker on 13-14, button on 3, and light grid on 4. The Atech owner has SDK physical testing in progress. The backend's authenticated endpoint is `wss://pink-hack.vercel.app/api/v1/device/audio`, verified with synthetic 16 kHz PCM speech and direct Journal persistence. Physical capture/playback and device integration remain unverified. The synthetic demo-device claim was released after closure so the real owner can provision privately. Follow [the device guide](docs/atech-firmware-guide.md) and [actual backend/device contract](docs/backend.md); do not duplicate the paid startup test or provision another synthetic singleton.
 

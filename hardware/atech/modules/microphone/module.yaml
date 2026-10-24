@@ -58,12 +58,12 @@ usage: |
   int16_t buf[512];
   int n = {{ instance }}.getSamples(buf, 512);
 
-  // --- record to a heap buffer (up to ~3 s at 16 kHz), then play back ---
+  // --- record to a heap buffer (up to 2 s at 16 kHz), then play back ---
   {{ instance }}.startRecording();
   // ... let time pass in your loop (non-blocking) ...
   {{ instance }}.stopRecording();
-  // Local extension erases/frees the captured RAM after playback.
-  {{ instance }}.clearRecording();
   const int16_t* rec = {{ instance }}.getRecording();      // MUST be const
   int len = {{ instance }}.getRecordingLength();           // sample count
   // Pair with a speaker on another port for playback: spk.writeSamples(rec, len);
+  // Local extension: erase/free only AFTER playback has finished.
+  {{ instance }}.clearRecording();

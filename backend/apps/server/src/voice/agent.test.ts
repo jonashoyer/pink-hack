@@ -425,3 +425,40 @@ test("abort after journal insert but before transaction completion rolls back ac
     await assert.rejects(dispatchJournalTool(db,"alice",request.voiceSessionId,"create_journal_entry",journal,"queued-tool"),rejects("conversation_stopped"));
   }finally{await close();}
 });
+
+test("identical no-write transient failure retries under a fresh execution then replays success",async()=>{
+  const {db,close}=await setup();try{
+    const request=await input(db);
+    await assert.rejects(runJournalAgent(db,config,request,undefined,async()=>{throw Error("transient provider outage");}),rejects("assistant_unavailable"));
+    const before=(await db.select().from(agentDelegations))[0]!;assert.equal(before.state,"failed");assert.equal(before.error?.retryable,true);
+    const result=await runJournalAgent(db,config,request,undefined,mock([create(),answer()]));
+    const after=(await db.select().from(agentDelegations))[0]!;assert.notEqual(after.executionId,before.executionId);assert.equal(after.state,"completed");assert.equal(after.error,null);
+    assert.deepEqual(await runJournalAgent(db,config,request,undefined,mock([])),result);assert.equal((await listJournal(db,"alice")).entries.length,1);
+  }finally{await close();}
+});
+
+test("multi-write crash recovers both entries and updated revision across a fresh process",async()=>{
+  const {db,url,close}=await setup();try{
+    const request=await input(db);const claim=await claimDelegation(db,request);assert.ok("executionId" in claim);
+    const execution=(mutationIndex:number)=>({delegationId:request.delegationId,executionId:claim.executionId,mutationIndex});
+    const first=await dispatchJournalTool(db,"alice",request.voiceSessionId,"create_journal_entry",journal,"model-one",execution(0)) as {id:string;revision:number};
+    const second=await dispatchJournalTool(db,"alice",request.voiceSessionId,"create_journal_entry",{...journal,title:"Second synthetic entry"},"model-two",execution(1)) as {id:string;revision:number};
+    const updated=await dispatchJournalTool(db,"alice",request.voiceSessionId,"update_journal_entry",{entry_id:first.id,expected_revision:first.revision,properties:{...journal.properties,changed:true}},"model-three",execution(2)) as {id:string;revision:number};
+    await db.update(agentDelegations).set({leaseExpiresAt:0}).where(eq(agentDelegations.delegationId,request.delegationId));
+    const script=`import {createDb} from '@backend/db'; import {runJournalAgent} from './src/voice/agent.ts'; const db=createDb({DATABASE_URL:${JSON.stringify(url)}}); try{console.log(JSON.stringify(await runJournalAgent(db,{ANTHROPIC_API_KEY:'synthetic'},${JSON.stringify(request)},undefined,async()=>{throw Error('model must not rerun')})));}finally{db.$client.close()}`;
+    const child=spawnSync(process.execPath,["--import","tsx","--input-type=module"],{cwd:process.cwd(),input:script,encoding:"utf8"});assert.equal(child.status,0,child.stderr);
+    const result=JSON.parse(child.stdout);assert.deepEqual(result.entries.sort((a:any,b:any)=>a.id.localeCompare(b.id)),[{id:first.id,revision:updated.revision},{id:second.id,revision:second.revision}].sort((a,b)=>a.id.localeCompare(b.id)));
+    assert.equal((await listJournal(db,"alice")).entries.length,2);
+    await assert.rejects(dispatchJournalTool(db,"alice",request.voiceSessionId,"create_journal_entry",journal,"old-worker",execution(3)),rejects("assistant_execution_expired"));
+  }finally{await close();}
+});
+
+test("expired zero-write lease is replaced and its old worker cannot write",async()=>{
+  const {db,close}=await setup();try{
+    const request=await input(db);const first=await claimDelegation(db,request);assert.ok("executionId" in first);
+    await db.update(agentDelegations).set({leaseExpiresAt:0}).where(eq(agentDelegations.delegationId,request.delegationId));
+    const next=await claimDelegation(db,request);assert.ok("executionId" in next);assert.notEqual(next.executionId,first.executionId);
+    await assert.rejects(dispatchJournalTool(db,"alice",request.voiceSessionId,"create_journal_entry",journal,"late",{delegationId:request.delegationId,executionId:first.executionId,mutationIndex:0}),rejects("assistant_execution_expired"));
+    await dispatchJournalTool(db,"alice",request.voiceSessionId,"create_journal_entry",journal,"current",{delegationId:request.delegationId,executionId:next.executionId,mutationIndex:0});assert.equal((await listJournal(db,"alice")).entries.length,1);
+  }finally{await close();}
+});

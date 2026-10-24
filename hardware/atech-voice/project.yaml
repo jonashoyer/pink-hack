@@ -1,0 +1,39 @@
+name: pink-hack-native-voice
+board: 14port
+modules_path: ./modules
+modules:
+  - {id: microphone, instance: mic, ports: [1, 2]}
+  - {id: speaker, instance: spk, ports: [13, 14]}
+  - {id: button, instance: btn, port: 3}
+  - {id: neopixel, instance: led, port: 4}
+code:
+  setup: |
+    spk.setVolume(0.4f);
+    led.setBrightness(20);
+    VoiceTransport::instance().begin(mic, spk);
+  loop: |
+    auto& voice = VoiceTransport::instance();
+    voice.tick(btn.isPressed());
+    if (atech_action == "voice_status") { voice.report(); atechDone(); }
+    if (atech_action == "voice_stop") { voice.requestStop(false); atechDone(); }
+    if (atech_action == "voice_cancel") { voice.requestStop(true); atechDone(); }
+    if (atech_action == "voice_start") { voice.requestStart(); atechDone(); }
+    if (atech_action == "voice_reconnect") { voice.requestReconnect(); atechDone(); }
+    if (atech_action == "voice_setup") { voice.requestSetup(); atechDone(); }
+    if (atech_action == "voice_reset_token") { voice.requestTokenReset(); atechDone(); }
+    static unsigned long lastLed = 0;
+    if (millis() - lastLed >= 50) {
+      lastLed = millis();
+      switch (voice.indicator()) {
+        case VoiceTransport::Indicator::Listening: led.setAll(0, 100, 160); break;
+        case VoiceTransport::Indicator::Capturing: led.setAll(0, 180, 40); break;
+        case VoiceTransport::Indicator::Thinking: led.setAll(140, 70, 0); break;
+        case VoiceTransport::Indicator::Speaking: led.setAll(100, 100, 140); break;
+        case VoiceTransport::Indicator::Saved: led.setAll(0, 180, 70); break;
+        case VoiceTransport::Indicator::Error: led.setAll(180, 0, 0); break;
+        case VoiceTransport::Indicator::Stopped: led.clear(); break;
+        default: led.setAll(0, 0, (millis() / 400) % 2 ? 130 : 30); break;
+      }
+      led.show();
+    }
+    yield();
