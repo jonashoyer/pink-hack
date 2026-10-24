@@ -6,8 +6,11 @@
     "api/server.mjs": { "maxDuration": 300 },
     "api/device.mjs": { "maxDuration": 300 }
   },
-  "rewrites": [
-    { "source": "/api/v1/device/audio", "destination": "/api/device" },
-    { "source": "/(.*)", "destination": "/api/server" }
+  "routes": [
+    { "src": "/api/v1/device/audio", "dest": "/api/device" },
+    { "src": "/presentation", "status": 308, "headers": { "Location": "/presentation/" } },
+    { "src": "/presentation/", "dest": "/presentation/index.html" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/api/server" }
   ]
 }

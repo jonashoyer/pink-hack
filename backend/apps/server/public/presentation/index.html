@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="provenance" content="Unvetted Synthetic">
+  <meta name="description" content="Kindalong. A first-draft, three-minute hackathon pitch about life after breast cancer treatment.">
+  <title>Kindalong | First-draft presentation</title>
+  <link rel="icon" href="assets/kindalong-favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="deck.css">
+  <style>
+    /* Kindalong pink/rose palette, from the published app CSS at source a3fc982c. */
+    :root {
+      --paper: oklch(98.9% .003 80); --ink: oklch(29% .012 350); --muted: oklch(52% .01 350);
+      --accent: oklch(53% .12 355); --line: oklch(92% .008 350); --dark: oklch(31% .025 355); --light: oklch(94.7% .027 12);
+      --gutter: clamp(1.5rem, 5vw, 5.5rem);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    h1, h2 { font-family: Georgia, "Times New Roman", serif; font-weight: 400; letter-spacing: -0.045em; line-height: 1.08; }
+    h1 { font-size: clamp(3.2rem, 5.2vw, 6.4rem); }
+    h2 { font-size: clamp(2.5rem, 4.2vw, 5rem); }
+    h3 { font-weight: 500; }
+    .slide { position: relative; padding-bottom: calc(var(--gutter) + 2rem); gap: 2rem; }
+    .slide > .slide-top { position: absolute; top: 2.2rem; left: var(--gutter); right: var(--gutter); width: auto; display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+    .brand { display: inline-flex; align-items: center; gap: 0.45em; font-family: Georgia, "Times New Roman", serif; font-size: 1.15rem; font-weight: 600; letter-spacing: -0.02em; }
+    .brand img { width: 1.6em; height: 1.6em; }
+    .title-brand { font-size: 1.6rem; }
+    .slide-top .eyebrow { font-size: 0.65rem; font-weight: 500; letter-spacing: 0.12em; }
+    .slide-footer { position: absolute; left: var(--gutter); right: var(--gutter); bottom: 1.4rem; width: auto; display: flex; justify-content: space-between; gap: 1rem; font-size: 0.75rem; color: var(--muted); border-top: 1px solid var(--line); padding-top: 0.85rem; }
+    .title-layout { grid-template-columns: 1.55fr 0.8fr; }
+    .title-layout h1 { max-width: 18ch; }
+    .title-layout .lead { margin-top: 1.8rem; font-size: clamp(1.2rem, 1.65vw, 1.65rem); max-width: 38ch; }
+    .title-shot img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; object-position: top; border: 1px solid var(--line); border-radius: 0.5rem; }
+    .title-shot figcaption { font-size: 0.8rem; color: var(--muted); margin-top: 0.5rem; }
+    .team { font-size: 0.95rem; color: var(--muted); margin-top: 2.3rem; }
+    .persona { padding: 2rem 0 2rem 2.5rem; border-left: 1px solid var(--line); }
+    .persona .name { font-family: Georgia, serif; font-size: clamp(2.5rem, 4vw, 4.5rem); margin-bottom: 0.2rem; }
+    .persona p { max-width: 35ch; }
+    .persona blockquote { margin: 1.8rem 0; font-family: Georgia, serif; font-size: clamp(1.5rem, 2.15vw, 2.4rem); line-height: 1.35; }
+    .context-list { list-style: none; padding: 0; margin: 1.7rem 0 0; }
+    .context-list li { padding: 0.8rem 0; border-top: 1px solid var(--line); font-size: clamp(1rem, 1.3vw, 1.25rem); }
+    .context-list span { display: block; font-size: 0.9rem; color: var(--muted); }
+    .product-layout { grid-template-columns: 0.8fr 1.2fr; gap: 3rem; }
+    .product-layout h2 { font-size: clamp(2.4rem, 3.7vw, 4.4rem); }
+    .preview img { max-height: 34rem; background: white; }
+    .preview figcaption { font-size: 0.8rem; }
+    .demo-layout { grid-template-columns: 1.2fr 0.8fr; align-items: start; }
+    .spoken { margin: 1.5rem 0; padding-left: 1.7rem; border-left: 2px solid var(--accent); font-family: Georgia, serif; font-size: clamp(1.4rem, 2vw, 2.1rem); line-height: 1.35; }
+    .tag { display: inline-block; padding: 0.35rem 0.6rem; background: var(--light); border-radius: 0.25rem; font-size: 0.78rem; color: var(--ink); }
+    .demo-action { display: inline-block; background: var(--accent); color: white; padding: 0.85rem 1.3rem; border-radius: 0.5rem; font-size: 1rem; text-decoration: none; }
+    .demo-action:hover { background: var(--ink); }
+    .expected { margin-top: 1.4rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+    .expected p { font-size: 1rem; }
+    .evidence-layout { align-items: start; gap: 4rem; }
+    .evidence-column { border-top: 1px solid var(--line); padding-top: 1.3rem; }
+    .evidence-column p { max-width: 42ch; }
+    .evidence-column ul { padding-left: 1.2rem; }
+    .evidence-column li { margin-bottom: 0.8rem; font-size: clamp(1rem, 1.5vw, 1.4rem); }
+    .closing h2 { max-width: 18ch; }
+    .closing .lead { max-width: 45ch; }
+    .closing-link { color: var(--accent); font-size: clamp(1rem, 2vw, 1.8rem); }
+    .deck-toolbar { position: fixed; bottom: 1.05rem; left: 50%; transform: translateX(-50%); z-index: 8; display: flex; align-items: center; gap: 0.35rem; padding: 0.25rem; background: var(--paper); border: 1px solid var(--line); border-radius: 0.5rem; }
+    .deck-toolbar button { border: 0; background: transparent; font-size: 0.8rem; padding: 0.55rem 0.7rem; }
+    .deck-toolbar button:hover { background: var(--light); }
+    .deck-toolbar output { min-width: 3.2rem; text-align: center; font-size: 0.8rem; }
+    .speaker-notes { display: none; }
+    #notes-panel { width: min(48rem, calc(100% - 2rem)); }
+    #notes-panel h2 { font-size: 1.8rem; }
+    #notes-panel p { font-size: 1rem; }
+    #notes-panel .timing { color: var(--muted); }
+    #notes-panel blockquote { margin: 1rem 0; padding-left: 1rem; border-left: 2px solid var(--accent); font-size: 1rem; line-height: 1.5; }
+    @media (max-width: 760px) {
+      .slide { padding-top: 5rem; padding-bottom: 6.5rem; }
+      .title-layout, .product-layout, .demo-layout { grid-template-columns: 1fr; }
+      .title-layout .title-shot { display: none; }
+      .slide > .slide-top { top: 1.4rem; }
+      .slide-top .eyebrow { max-width: 15ch; text-align: right; }
+      .persona { padding: 1.5rem 0 0; border-left: 0; border-top: 1px solid var(--line); }
+      .slide-footer { bottom: 4.6rem; }
+      .deck-toolbar { bottom: 0.75rem; }
+      .deck-toolbar button { min-height: 44px; }
+      .evidence-layout { gap: 1.5rem; }
+    }
+    @media print {
+      .slide { padding: 10mm 4mm 15mm; min-height: 160mm; }
+      .slide > .slide-top { position: static; margin-bottom: 4mm; }
+      .slide-footer { left: 4mm; right: 4mm; bottom: 0; }
+      h1 { font-size: 40pt; } h2 { font-size: 32pt; }
+      .product-layout h2 { font-size: 28pt; }
+      .lead, .title-layout .lead { font-size: 16pt; }
+      .persona .name { font-size: 30pt; } .persona blockquote, .spoken { font-size: 19pt; }
+      .product-layout { grid-template-columns: 0.8fr 1.2fr; }
+      .demo-layout { grid-template-columns: 1.2fr 0.8fr; }
+      .title-layout { grid-template-columns: 1.55fr 0.8fr; }
+      .preview img { max-height: 105mm; }
+      .deck-toolbar, #notes-panel { display: none !important; }
+      .note, figcaption, .tag, .context-list span, .slide-footer { font-size: 9pt; }
+      .context-list li, .evidence-column li, .expected p { font-size: 11pt; }
+    }
+  </style>
+  <script src="deck.js" defer></script>
+</head>
+<body>
+  <main aria-label="Kindalong first-draft presentation">
+    <section class="slide" data-slide aria-labelledby="title-heading">
+      <div class="slide-top"><span class="brand title-brand"><img src="assets/kindalong-mark.svg" alt="">Kindalong</span><span class="eyebrow">Build for Impact · 24 October 2026</span></div>
+      <div class="columns title-layout">
+        <div>
+          <h1 id="title-heading">Breast cancer treatment can end before its effects do.</h1>
+          <p class="lead">A companion for physical symptoms, feelings and everyday life between appointments.</p>
+          <p class="team">Jonas · Klara · Chloé</p>
+        </div>
+        <figure class="title-shot"><img src="assets/kindalong-held-e43dd667-landing-desktop.png" alt="The published Kindalong landing page with the Held logo: A companion for life after breast cancer"><figcaption>Public landing page, source e43dd667, captured 24 October</figcaption></figure>
+      </div>
+      <div class="slide-footer"><span>First draft</span><span>01 / 06</span></div>
+      <aside class="speaker-notes" data-timing="0:00 to 0:08 · 8 seconds (planned, unrehearsed)">
+        <p>"Breast cancer treatment can end before its effects do. We're building Kindalong, a companion for everyday life between appointments."</p>
+        <p>Kindalong is the product name; Pink Hack was the working title. Keep this opening short.</p>
+      </aside>
+    </section>
+
+    <section class="slide" data-slide aria-labelledby="problem-heading">
+      <div class="slide-top"><span class="brand"><img src="assets/kindalong-mark.svg" alt="">Kindalong</span><span class="eyebrow">The problem</span></div>
+      <div class="columns">
+        <div>
+          <h2 id="problem-heading">Emma's recovery between appointments</h2>
+          <p class="lead">Joint pain, fatigue and worry affect the same day.</p>
+          <p>She wants to remember difficult days before her next oncology appointment, and keep today's plans manageable.</p>
+        </div>
+        <div class="persona">
+          <p class="name">Meet Emma</p>
+          <p class="note">A fictional composite from our research</p>
+          <p>Active hospital treatment has ended. She is eighteen months into prescribed hormone therapy.</p>
+          <blockquote>"I'd like enough energy to call my sister at three."</blockquote>
+          <p class="note">Synthetic scenario dialogue. This is not patient testimony.</p>
+        </div>
+      </div>
+      <div class="slide-footer"><span>Physical and emotional experiences, together</span><span>02 / 06</span></div>
+      <aside class="speaker-notes" data-timing="0:08 to 0:28 · 20 seconds (planned, unrehearsed)">
+        <p>"Emma is a fictional composite grounded in our breast-cancer survivorship research. Hospital treatment has ended, but joint pain, fatigue and worry still shape her day. She wants a short account to revisit before her oncology follow-up, and enough energy for something ordinary, a call with her sister."</p>
+        <p>Do not introduce prevalence statistics or claim patient validation. The prescription and sister call are synthetic scenario choices.</p>
+      </aside>
+    </section>
+
+    <section class="slide" data-slide aria-labelledby="product-heading">
+      <div class="slide-top"><span class="brand"><img src="assets/kindalong-mark.svg" alt="">Kindalong</span><span class="eyebrow">The product</span></div>
+      <div class="columns product-layout">
+        <div>
+          <h2 id="product-heading">A journal shaped by Emma's context</h2>
+          <p>Designed to turn her spoken account into an editable Journal entry and a small day plan.</p>
+          <ul class="context-list">
+            <li>Her breast cancer recovery<span>The context she wants the companion to know</span></li>
+            <li>What she wants to track<span>Symptoms, feelings and what matters today</span></li>
+            <li>What helps her<span>Her own coping preferences and priorities</span></li>
+          </ul>
+        </div>
+        <figure class="preview">
+          <img src="assets/kindalong-entry-20261023-seeded-1637.png" alt="A seeded fictional Kindalong Journal entry for 23 October: fatigue, pain, sleep, appetite, overall health and medication fields, Emma's own words and a Day plan heading">
+          <figcaption>Real public app, 16:38: a seeded fictional entry from Emma's ten-day demo history (Oct 14–23), added at the user's direction. Not recorded by voice or written by the agent.</figcaption>
+        </figure>
+      </div>
+      <div class="slide-footer"><span>Instructed not to diagnose or change treatment</span><span>03 / 06</span></div>
+      <aside class="speaker-notes" data-timing="0:28 to 0:45 · 17 seconds (planned, unrehearsed)">
+        <p>"Emma writes her own pages: her recovery, what she tracks, and what helps her. Kindalong is designed to use them to turn her words into an editable entry and a small plan. It is instructed not to diagnose or change treatment."</p>
+        <p>The image is a real capture of the public app at 16:38: one of ten seeded fictional entries, with her ratings and a Day plan. It is demo history, not a voice or agent result. Point at the three context pages in the sidebar. The Home, rating and trends design is still pending layout work and is not shown as live.</p>
+      </aside>
+    </section>
+
+    <section class="slide" data-slide aria-labelledby="demo-heading">
+      <div class="slide-top"><span class="brand"><img src="assets/kindalong-mark.svg" alt="">Kindalong</span><span class="eyebrow">The demo</span></div>
+      <div>
+        <h2 id="demo-heading">Emma's context, live today</h2>
+        <div class="columns demo-layout">
+          <div>
+            <span class="tag">Planned spoken request · fictional scenario</span>
+            <blockquote class="spoken">"Today it's six out of ten, my hand pain is seven, and I slept five hours. I'm worried about my next oncology appointment."</blockquote>
+            <p>She reports her prescribed medication and asks for a manageable plan, with time to call her sister.</p>
+            <a class="demo-action" href="https://pink-hack-journal.lovable.app/app" target="_blank" rel="noopener noreferrer">Open the public app ↗</a>
+          </div>
+          <div>
+            <ol class="steps">
+              <li><strong>Show her context</strong><span>Three saved breast-cancer demo pages</span></li>
+              <li><strong>Show her Journal</strong><span>Ten seeded fictional days with Day plans (demo history)</span></li>
+              <li><strong>Spoken save: pending</strong><span>The first real spoken save is still being validated</span></li>
+            </ol>
+            <div class="expected">
+              <span class="tag">Designed, not yet demonstrated</span>
+              <p>From her words, one editable entry with symptoms, worry and her medication self-report, and a plan based on her preferences.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer"><span>Voice saving awaits a genuine spoken save and readback</span><span>04 / 06</span></div>
+      <aside class="speaker-notes" data-timing="0:45 to 2:05 · 80 seconds all-in, including window switches (planned, unrehearsed)">
+        <p><strong>80-second budget.</strong> Variant A, used only after a passing human voice run: switch to the app (5 s), show two context pages (10 s), Emma's request (about 28 s), wait for the saved entry (at most 20 s), open and reload it (12 s), Stop and switch back (5 s). If the wait passes 20 s, skip the reload. Variant B, the current default: switch (5 s), two pages (10 s), the spoken line below (about 17 s), the Journal as it loads (8 s), switch back (5 s), about 45 s in total. Variant A steps stay in these notes only; the visible slide shows the variant B default.</p>
+        <p><strong>Variant B, the checked fallback path:</strong> open <code>/app</code> signed out. Click "My breast cancer recovery (demo)" and show the fictional-composite label, physical symptoms and worry. Click "What helps me" and show rest after lunch and the sister call at three. Return to Journal through the sidebar and show the ten seeded fictional days (Oct 14–23). Open "2026-10-22 Keeping a question for follow-up (demo)" or "2026-10-23 Getting my notes ready (demo)" and show her ratings, the Day plan and the note for her oncology appointment. Say they are seeded demo history. Any other row, such as an Oct 24 note, has unverified provenance: don't open or describe it. An agent writing such an entry from her voice is unvalidated. Say: "Emma is fictional. These are her saved pages and ten days of demo history we added to show how her journal builds up. Our first browser voice start hit a usage limit before a provider session was created. The backend owner reports that limit removed; a validated spoken save and readback are still pending." Do not touch Tap to talk, Save, Archive, New entry or rating controls. Do not type a substitute entry.</p>
+        <p><strong>Variant A only:</strong> use the following exact request only after the sole mic owner reports a real transcript, canonical entry, readback and Stop evidence.</p>
+        <blockquote>"I'm Emma. Since breast cancer treatment ended, the fatigue hasn't gone away. Today it's six out of ten, my hand pain is seven, and I slept five hours. I'm worried about my next oncology appointment. I took my prescribed letrozole, 2.5 milligrams, at nine this morning. I'd like enough energy to call my sister at three. Please save this in my journal and make a manageable plan using my pages."</blockquote>
+        <p>Check one new entry for fatigue 6/10, hand pain 7/10, five hours' sleep, worry about follow-up and the reported letrozole 2.5 mg at 09:00. This is a fictional existing prescription, not a dose recommendation or an inference about the cause of symptoms. Check a Day plan traceable to her preferences, with one or two priorities. Reload the same entry.</p>
+        <p>Only say "saved" after the canonical stored result confirms it. If saving fails or remains unvalidated, show the actual pages/manual editing and say voice saving remains unproven. Do not insert a pretend voice entry. A fallback recording must show a previously validated run and be labelled as a recording.</p>
+        <p>Keep any Atech beat within the owner's evidence. Native connection and audio dataflow are owner-reported; an audible conversation and a saved Journal entry are unvalidated. Stop retires backend writing separately from provider finalization. Already committed entries survive Stop.</p>
+      </aside>
+    </section>
+
+    <section class="slide" data-slide aria-labelledby="evidence-heading">
+      <div class="slide-top"><span class="brand"><img src="assets/kindalong-mark.svg" alt="">Kindalong</span><span class="eyebrow">What we know</span></div>
+      <div>
+        <h2 id="evidence-heading">Built around her everyday life</h2>
+        <div class="columns columns--equal evidence-layout">
+          <div class="evidence-column">
+            <h3>In today's demo</h3>
+            <ul>
+              <li>Emma's recovery, what she tracks and what helps her, saved in her own pages.</li>
+              <li>A journal she can return to between appointments: ten seeded fictional days, each with her ratings and a Day plan.</li>
+            </ul>
+            <p class="note">Emma is fictional. The app, her pages and the seeded demo entries are real saved records; the entries were added for the demo, not spoken.</p>
+          </div>
+          <div class="evidence-column">
+            <h3>What comes next</h3>
+            <ul>
+              <li>Test the full journey from speaking to a saved journal entry.</li>
+              <li>Bring the same conversation to a physical companion.</li>
+              <li>Learn from women whether this helps between appointments.</li>
+            </ul>
+            <p class="note">We haven't tested this with patients yet.</p>
+          </div>
+        </div>
+      </div>
+      <div class="slide-footer"><span>Kindalong · From prototype to everyday use</span><span>05 / 06</span></div>
+      <aside class="speaker-notes" data-timing="2:05 to 2:20 · 15 seconds (planned, unrehearsed)">
+        <p>"What works today: the public app, her three saved pages and ten days of seeded demo history. Still to prove: a real spoken save, the Atech device, and whether this helps women day to day. This is a fictional demo, not a patient trial."</p>
+        <p>Refresh this slide only when docs/mic-test.md and docs/demo-validation.md contain the actual result. A passing source or HTTP test is not evidence of speech, model accuracy or patient benefit. The slide is deliberately about the current draft's evidence, not a rehearsed success claim.</p>
+      </aside>
+    </section>
+
+    <section class="slide closing" data-slide aria-labelledby="closing-heading">
+      <div class="slide-top"><span class="brand"><img src="assets/kindalong-mark.svg" alt="">Kindalong</span><span class="eyebrow">The next step</span></div>
+      <div>
+        <h2 id="closing-heading">Her words.<br>Her recovery.<br>Her day.</h2>
+        <p class="lead">Next, we propose testing this daily journaling workflow with women living with the effects of breast cancer treatment.</p>
+        <p>Can they capture a difficult day and revisit it before a follow-up?<br>Personal accounts and privacy are part of the next build.</p>
+      </div>
+      <div class="rule">
+        <a class="closing-link" href="https://pink-hack-journal.lovable.app/app" target="_blank" rel="noopener noreferrer">pink-hack-journal.lovable.app/app ↗</a>
+        <p class="note">Kindalong · Jonas, Klara and Chloé</p>
+      </div>
+      <div class="slide-footer"><span>Proposed research, not a committed study</span><span>06 / 06</span></div>
+      <aside class="speaker-notes" data-timing="2:20 to 2:40 · 20 seconds (planned, unrehearsed). 20 seconds of margin to 3:00.">
+        <p>"Next, we want to test the daily journaling workflow with women living with the lasting effects of breast cancer treatment. Can they capture a difficult day and revisit it before a follow-up? Personal accounts and privacy belong in the next build. Her words. Her recovery. Her day."</p>
+        <p>This is a proposal, not a committed pilot or a claim of improved health. Today's shared public demo must contain fictional information only. The app URL is the existing product; this local deck is not a published audience link.</p>
+      </aside>
+    </section>
+  </main>
+
+  <nav class="deck-toolbar" aria-label="Slide navigation">
+    <button type="button" id="draft-prev" aria-label="Previous slide">←</button>
+    <output id="draft-position" aria-live="polite">1 / 6</output>
+    <button type="button" id="draft-next" aria-label="Next slide">→</button>
+    <button type="button" id="draft-notes">Notes</button>
+    <button type="button" id="draft-help" aria-label="Presentation controls">?</button>
+  </nav>
+  <dialog id="notes-panel" aria-labelledby="notes-heading">
+    <p class="timing" id="notes-timing"></p>
+    <h2 id="notes-heading">Speaker notes</h2>
+    <div id="notes-body"></div>
+    <button type="button" id="close-notes">Close notes</button>
+  </dialog>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const slides = [...document.querySelectorAll('[data-slide]')];
+      const panel = document.getElementById('notes-panel');
+      const activeIndex = () => slides.findIndex(slide => !slide.hidden);
+      const sendKey = key => document.dispatchEvent(new KeyboardEvent('keydown', {key, bubbles: true}));
+      const updatePosition = () => {
+        const index = activeIndex();
+        document.getElementById('draft-position').textContent = `${index + 1} / ${slides.length}`;
+        document.getElementById('draft-prev').disabled = index === 0;
+        document.getElementById('draft-next').disabled = index === slides.length - 1;
+      };
+      new MutationObserver(updatePosition).observe(document.querySelector('main'), {subtree: true, attributes: true, attributeFilter: ['hidden']});
+      document.getElementById('draft-prev').addEventListener('click', () => sendKey('ArrowLeft'));
+      document.getElementById('draft-next').addEventListener('click', () => sendKey('ArrowRight'));
+      document.getElementById('draft-help').addEventListener('click', () => document.getElementById('open-controls').click());
+      document.getElementById('draft-notes').addEventListener('click', () => {
+        const slide = slides[activeIndex()];
+        const notes = slide.querySelector('.speaker-notes');
+        document.getElementById('notes-heading').textContent = slide.querySelector('h1,h2').textContent;
+        document.getElementById('notes-timing').textContent = notes.dataset.timing;
+        document.getElementById('notes-body').innerHTML = notes.innerHTML;
+        panel.showModal();
+      });
+      document.getElementById('close-notes').addEventListener('click', () => panel.close());
+      panel.addEventListener('keydown', event => event.stopPropagation());
+      updatePosition();
+    });
+  </script>
+</body>
+</html>
