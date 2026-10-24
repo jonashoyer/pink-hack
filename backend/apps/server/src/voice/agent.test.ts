@@ -462,3 +462,16 @@ test("expired zero-write lease is replaced and its old worker cannot write",asyn
     await dispatchJournalTool(db,"alice",request.voiceSessionId,"create_journal_entry",journal,"current",{delegationId:request.delegationId,executionId:next.executionId,mutationIndex:0});assert.equal((await listJournal(db,"alice")).entries.length,1);
   }finally{await close();}
 });
+
+test("provider failure after two creations and an update returns both saved IDs and revisions",async()=>{
+  const {db,close}=await setup();try{
+    const request=await input(db);let round=0;
+    const result=await runJournalAgent(db,config,request,undefined,async()=>{
+      if(round++===0)return Response.json(use(tool("first","create_journal_entry",journal),tool("second","create_journal_entry",{...journal,title:"Second entry"})));
+      if(round===2){const first=(await listJournal(db,"alice")).entries.find(x=>x.title===journal.title)!;return Response.json(use(tool("change","update_journal_entry",{entry_id:first.id,expected_revision:first.revision,properties:{...journal.properties,updated:true}})));}
+      return new Response("transient continuation failure",{status:500});
+    });
+    assert.equal(result.entries.length,2);assert.deepEqual(result.entries.map(x=>x.revision).sort(),[1,2]);
+    assert.deepEqual(await runJournalAgent(db,config,request,undefined,mock([])),result);assert.equal((await listJournal(db,"alice")).entries.length,2);
+  }finally{await close();}
+});
